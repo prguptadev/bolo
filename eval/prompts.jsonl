@@ -1,0 +1,50 @@
+{"id":"p01","say":"open notes","expect":[{"action":"openApp","app":"Notes"}]}
+{"id":"p02","say":"Chrome kholo","expect":[{"action":"openApp","app":"Google Chrome"}]}
+{"id":"p03","say":"open intellij","expect":[{"action":"openApp","app":"IntelliJ IDEA"}]}
+{"id":"p04","say":"launch whatsapp","expect":[{"action":"openApp","app":"WhatsApp"}]}
+{"id":"p05","say":"open github dot com","expect":[{"action":"openURL","text":"github.com"}]}
+{"id":"p06","say":"bhai ko WhatsApp karo I'll be late by 20 minutes","expect":[{"action":"sendMessage","contact":"bhai","channel":"whatsapp","text":"I'll be late by 20 minutes"}]}
+{"id":"p07","say":"mom ko message bhejo ki main ghar pahunch gaya","expect":[{"action":"sendMessage","contact":"mom","text":"main ghar pahunch gaya"}]}
+{"id":"p08","say":"Priya ko teams pe message karo joining in 5","expect":[{"action":"sendMessage","contact":"priya","channel":"teams","text":"joining in 5"}]}
+{"id":"p09","say":"send a teams message to Priya saying the build is green","expect":[{"action":"sendMessage","contact":"priya","channel":"teams","text":"the build is green"}]}
+{"id":"p10","say":"whatsapp myself saying hello from Bolo","expect":[{"action":"sendMessage","contact":"myself","channel":"whatsapp","text":"hello from Bolo"}]}
+{"id":"p11","say":"text mom I'm leaving office now","expect":[{"action":"sendMessage","contact":"mom","text":"I'm leaving office now"}]}
+{"id":"p12","say":"tell bhai on whatsapp that I'll call him tonight","expect":[{"action":"sendMessage","contact":"bhai","channel":"whatsapp","text":"I'll call him tonight"}]}
+{"id":"p13","say":"papa ko bol do main 10 minute mein aa raha hoon","expect":[{"action":"sendMessage","contact":"papa","text":"main 10 minute mein aa raha hoon"}]}
+{"id":"p14","say":"mom ko whatsapp pe likho dinner at 8 is fine","expect":[{"action":"draftMessage","contact":"mom","channel":"whatsapp","text":"dinner at 8 is fine"}]}
+{"id":"p15","say":"open bhai's whatsapp chat","expect":[{"action":"draftMessage","contact":"bhai","channel":"whatsapp"}]}
+{"id":"p16","say":"open whatsapp chat with mom and send reached home","expect":[{"action":"sendMessage","contact":"mom","channel":"whatsapp","text":"reached home"}]}
+{"id":"p17","say":"teams call Priya","expect":[{"action":"call","contact":"priya","channel":"teams"}]}
+{"id":"p18","say":"call Rahul on teams","expect":[{"action":"call","contact":"rahul","channel":"teams"}]}
+{"id":"p19","say":"new note groceries milk eggs bread","expect":[{"action":"newNote","text":"groceries milk eggs bread"}]}
+{"id":"p20","say":"note down the demo is on Friday","expect":[{"action":"newNote","text":"the demo is on Friday"}]}
+{"id":"p21","say":"remind me at 5 pm to call bhai","expect":[{"action":"addReminder","text":"call bhai"}]}
+{"id":"p22","say":"remind me in 10 minutes to check the build","expect":[{"action":"addReminder","text":"check the build"}]}
+{"id":"p23","say":"search youtube for G1GC tuning","expect":[{"action":"webSearch","text":"G1GC tuning","engine":"youtube"}]}
+{"id":"p24","say":"google jvm heap dump analysis","expect":[{"action":"webSearch","text":"jvm heap dump analysis"}]}
+{"id":"p25","say":"play lofi beats on youtube","expect":[{"action":"webSearch","text":"lofi beats","engine":"youtube"}]}
+{"id":"p26","say":"join my next meeting","expect":[{"action":"joinNextMeeting"}]}
+{"id":"p27","say":"volume 30","expect":[{"action":"setVolume","number":30}]}
+{"id":"p28","say":"mute","expect":[{"action":"mute"}]}
+{"id":"p29","say":"lock the screen","expect":[{"action":"lockScreen"}]}
+{"id":"p30","say":"run my standup shortcut","expect":[{"action":"runShortcut","text":"standup"}]}
+{"id":"p31","say":"type thanks will review today","expect":[{"action":"typeText","text":"thanks will review today"}]}
+{"id":"p32","say":"send a teams message to Priya saying joining in 5 and remind me at 5 pm to call her","expect":[{"action":"sendMessage","contact":"priya","channel":"teams","text":"joining in 5"},{"action":"addReminder","text":"call her"}]}
+{"id":"p33","say":"open teams and then bhai ko whatsapp karo on my way","expect":[{"action":"openApp","app":"Microsoft Teams"},{"action":"sendMessage","contact":"bhai","channel":"whatsapp","text":"on my way"}]}
+{"id":"p34","say":"Chrome kholo aur google karo spring boot actuator","expect":[{"action":"openApp","app":"Google Chrome"},{"action":"webSearch","text":"spring boot actuator"}]}
+{"id":"p35","say":"whatsapp bhai saying bring milk and call me when you reach","expect":[{"action":"sendMessage","contact":"bhai","channel":"whatsapp","text":"bring milk and call me when you reach"}]}
+{"id":"p36","say":"could you pull up my calendar","expect":[{"action":"openApp","app":"Calendar"}]}
+{"id":"p37","say":"I need to tell bhai on whatsapp that I'm stuck in traffic","expect":[{"action":"sendMessage","contact":"bhai","channel":"whatsapp","text":"I'm stuck in traffic"}]}
+{"id":"p38","say":"let priya know on teams that the deployment is done","expect":[{"action":"sendMessage","contact":"priya","channel":"teams","text":"the deployment is done"}]}
+{"id":"p39","say":"jot down call the plumber tomorrow","expect":[{"action":"newNote","text":"call the plumber tomorrow"}]}
+{"id":"p40","say":"don't let me forget to pay the electricity bill at 7 pm","expect":[{"action":"addReminder","text":"pay the electricity bill"}]}
+{"id":"p41","say":"turn the volume down to 20","expect":[{"action":"setVolume","number":20}]}
+{"id":"p42","say":"find me some videos on kotlin coroutines","expect":[{"action":"webSearch","text":"kotlin coroutines","engine":"youtube"}]}
+{"id":"p43","say":"bhai ko call karo teams pe","expect":[{"action":"call","contact":"bhai","channel":"teams"}]}
+{"id":"p44","say":"mujhe 6 baje yaad dilana ki gym jaana hai","expect":[{"action":"addReminder","text":"gym jaana hai"}]}
+{"id":"p45","say":"message priya that I'll be 10 minutes late","expect":[{"action":"sendMessage","contact":"priya","text":"I'll be 10 minutes late"}]}
+{"id":"p46","say":"open calculator","expect":[{"action":"openApp","app":"Calculator"}]}
+{"id":"p47","say":"what's the weather like","expect":[]}
+{"id":"p48","say":"I was thinking about messaging bhai later","expect":[]}
+{"id":"p49","say":"hmm","expect":[]}
+{"id":"p50","say":"tell me a joke","expect":[]}

@@ -182,6 +182,12 @@ public struct CommandParser: Sendable {
         },
 
         // Web search.
+        Pattern("(?<eng>google|youtube|search) (?:karo|kar do|pe search karo) (?<q>.+)") { _, c in
+            CommandParser.searchStep(c["q"], c["eng"])
+        },
+        Pattern("(?<q>.+?) (?:(?<eng>google|youtube) )?(?:search karo|search kar do|google karo|google kar do)") { _, c in
+            CommandParser.searchStep(c["q"], c["eng"])
+        },
         Pattern("(?:search|google|look up) (?:on )?(?<eng>youtube|google) (?:for )?(?<q>.+)") { _, c in
             CommandParser.searchStep(c["q"], c["eng"])
         },
@@ -292,12 +298,18 @@ public struct CommandParser: Sendable {
         return Step(.call, contact: who, channel: ch.flatMap(Channel.from(spoken:)) ?? .teams)
     }
 
+    private static let pronouns: Set<String> = [
+        "me", "us", "you", "him", "her", "them", "it", "this", "that", "everyone", "someone", "mujhe", "hume",
+    ]
+
     static func cleanWho(_ who: String?) -> String? {
         guard var w = who?.trimmingCharacters(in: .whitespaces), !w.isEmpty else { return nil }
         w = w.replacingOccurrences(of: "^(?:my|mere|meri|to) ", with: "", options: [.regularExpression, .caseInsensitive])
         w = w.replacingOccurrences(of: "(?:'s|’s)$", with: "", options: .regularExpression)
         // A "who" that is a whole sentence means the pattern matched the wrong way round.
         guard !w.isEmpty, w.split(separator: " ").count <= 4 else { return nil }
+        // "tell me a joke" is a request, not a message to someone called "me".
+        guard !pronouns.contains(w.lowercased()) else { return nil }
         return w
     }
 

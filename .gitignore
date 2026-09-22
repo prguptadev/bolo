@@ -5,3 +5,7 @@ build/
 xcuserdata/
 DerivedData/
 .DS_Store
+eval/recordings/
+eval/SpeechEval/.build/
+eval/SpeechEval/.swiftpm/
+__pycache__/

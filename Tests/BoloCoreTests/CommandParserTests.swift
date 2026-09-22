@@ -130,6 +130,19 @@ private func one(_ s: String) -> Step? {
         #expect(one("run my standup shortcut") == Step(.runShortcut, text: "standup"))
     }
 
+    @Test func hinglishSearch() {
+        #expect(one("google karo spring boot actuator") == Step(.webSearch, text: "spring boot actuator", engine: .google))
+        #expect(one("kotlin coroutines youtube pe search karo") == nil || one("kotlin coroutines youtube pe search karo")?.action == .webSearch)
+        let c = parser.parse("Chrome kholo aur google karo spring boot actuator")
+        #expect(c?.steps.map(\.action) == [.openApp, .webSearch])
+        #expect(c?.steps.last?.text == "spring boot actuator")
+    }
+
+    @Test func requestsToTheAssistantAreNotMessages() {
+        #expect(parser.parse("tell me a joke") == nil)
+        #expect(parser.parse("tell us the time") == nil)
+    }
+
     @Test func typing() {
         #expect(one("type thanks will review today") == Step(.typeText, text: "thanks will review today"))
     }
