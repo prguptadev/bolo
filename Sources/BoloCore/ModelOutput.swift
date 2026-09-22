@@ -38,9 +38,14 @@ public enum ModelOutput {
             }
             let engine: SearchEngine =
                 v(self.engine)?.lowercased() == "youtube" || (v(text) ?? "").lowercased().contains("youtube") ? .youtube : .google
+            // Models sometimes keep the Hinglish/English joining word: "ki build green hai".
+            var text = v(text)
+            if [.sendMessage, .draftMessage].contains(action), let t = text {
+                text = t.replacingOccurrences(of: "^(?:ki|that|saying|ke)\\s+", with: "", options: [.regularExpression, .caseInsensitive])
+            }
             return Step(
                 action, app: v(app).map(AppNames.canonical), contact: v(contact),
-                channel: v(channel).flatMap(Channel.from(spoken:)), text: v(text), time: v(time),
+                channel: v(channel).flatMap(Channel.from(spoken:)), text: text, time: v(time),
                 engine: action == .webSearch ? engine : nil,
                 number: v(number?.value).flatMap { Int($0.filter(\.isNumber)) })
         }

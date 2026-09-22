@@ -91,7 +91,7 @@ public struct CommandParser: Sendable {
         "(?:open|launch|start|switch to|send|message|text|whatsapp|teams|imessage|tell|remind|set a reminder|"
         + "search|google|youtube|look up|play|new note|create a note|make a note|add a note|take a note|note|"
         + "join|type|write|call|set volume|volume|mute|unmute|lock|run|go to|visit|"
-        + "\\S+ ko (?:whatsapp|teams|message|msg|text|call|bolo|bhejo))"
+        + "\\S+ ko (?:whatsapp|teams|message|msg|text|call|bolo|bhejo|batao))"
 
     private static let splitter = try! NSRegularExpression(
         pattern: "\\s+(and then|and also|and|then|aur phir|aur|phir|or)\\s+(?=" + clauseStart + "\\b)",
@@ -200,12 +200,12 @@ public struct CommandParser: Sendable {
         },
 
         // Hinglish messaging: "bhai ko whatsapp karo ki ...", "priya ko teams pe message karo ...".
-        Pattern("(?<who>.+?) ko (?:(?<ch>whats ?app|teams|imessage|message|msg|text|sms) (?:pe |par |on )?)?(?<verb>message karo|msg karo|message kar do|karo|kar do|kardo|bhejo|bhej do|bhejdo|likho|likh do|bolo|bol do)(?: (?:ki|that|saying))?(?: (?<msg>.+))?") {
+        Pattern("(?<who>.+?) ko (?:(?<ch>whats ?app|teams|imessage|message|msg|text|sms) (?:pe |par |on )?)?(?<verb>message karo|msg karo|message kar do|karo|kar do|kardo|bhejo|bhej do|bhejdo|likho|likh do|bolo|bol do|batao|bata do|bataa do)(?: (?:ki|that|saying))?(?: (?<msg>.+))?") {
             p, c in
             let verb = c["verb"]?.lowercased() ?? ""
             return p.messageStep(who: c["who"], msg: c["msg"] ?? "", ch: c["ch"], send: !verb.hasPrefix("likh"))
         },
-        Pattern("(?<who>.+?) ko (?:(?<ch>whats ?app|teams) (?:pe |par |on )?)?(?<msg>.+?) (?<verb>bolo|bol do|bhejo|bhej do|likho|likh do|message karo|msg karo|whats ?app karo)") {
+        Pattern("(?<who>.+?) ko (?:(?<ch>whats ?app|teams) (?:pe |par |on )?)?(?<msg>.+?) (?<verb>bolo|bol do|batao|bata do|bhejo|bhej do|likho|likh do|message karo|msg karo|whats ?app karo)") {
             p, c in
             let verb = c["verb"]?.lowercased() ?? ""
             return p.messageStep(who: c["who"], msg: c["msg"] ?? "", ch: c["ch"], send: !verb.hasPrefix("likh"))

@@ -32,6 +32,16 @@ private func one(_ s: String) -> Step? {
         #expect(s == Step(.sendMessage, contact: "bhai", channel: nil, text: "main 10 minute mein aa raha hoon"))
     }
 
+    @Test func bataoMeansTell() {
+        let s = one("priya ko teams pe batao ki build green hai")
+        #expect(s == Step(.sendMessage, contact: "priya", channel: .teams, text: "build green hai"))
+    }
+
+    @Test func modelMessageLosesJoiningWord() {
+        let steps = ModelOutput.steps(fromJSON: #"{"steps":[{"action":"sendMessage","contact":"priya","channel":"teams","text":"ki build green hai"}]}"#)
+        #expect(steps.first?.text == "build green hai")
+    }
+
     @Test func likhoIsDraftNotSend() {
         let s = one("mom ko whatsapp pe likho dinner at 8 is fine")
         #expect(s?.action == .draftMessage)

@@ -22,9 +22,13 @@ if ! xcrun metal --version >/dev/null 2>&1; then
 fi
 
 DERIVED=build/DerivedData
-xcodebuild -scheme Bolo -configuration Release -destination 'platform=macOS,arch=arm64' \
+set +e
+xcodebuild -scheme Bolo -configuration Release -destination 'generic/platform=macOS' ARCHS=arm64 \
   -derivedDataPath "$DERIVED" -skipPackagePluginValidation -skipMacroValidation \
-  -quiet build
+  -quiet build 2>&1 | grep -vE "IDERunDestination|Using the first of multiple matching destinations|^\{ platform:|^\s*$"
+status=${PIPESTATUS[0]}
+set -e
+[ "$status" -eq 0 ] || { echo "error: xcodebuild failed (exit $status)" >&2; exit 1; }
 PRODUCTS="$DERIVED/Build/Products/Release"
 
 APP=build/Bolo.app
