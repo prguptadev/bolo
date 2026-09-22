@@ -334,6 +334,89 @@ private func one(_ s: String) -> Step? {
     }
 }
 
+@Suite struct ScreenCommands {
+    @Test func clicks() {
+        #expect(one("click send") == Step(.click, target: "send"))
+        #expect(one("click on the Export button") == Step(.click, target: "Export"))
+        #expect(one("tap the family group") == Step(.click, target: "family group"))
+        #expect(one("Save pe click karo") == Step(.click, target: "Save"))
+        #expect(one("submit dabao") == Step(.click, target: "submit"))
+    }
+
+    @Test func keysAndShortcuts() {
+        #expect(one("press enter") == Step(.pressKey, text: "return"))
+        #expect(one("press command shift t") == Step(.pressKey, text: "cmd+shift+t"))
+        #expect(one("press cmd s") == Step(.pressKey, text: "cmd+s"))
+        #expect(one("enter dabao") == Step(.pressKey, text: "return"))
+        #expect(one("select all") == Step(.pressKey, text: "cmd+a"))
+        #expect(one("copy that") == Step(.pressKey, text: "cmd+c"))
+        #expect(one("save karo") == Step(.pressKey, text: "cmd+s"))
+        #expect(one("open a new tab") == Step(.pressKey, text: "cmd+t"))
+        #expect(one("press send") == Step(.click, target: "send"))  // not a key: a button
+    }
+
+    @Test func menus() {
+        #expect(one("File menu export as PDF") == Step(.menu, target: "File > export as PDF"))
+        #expect(one("choose Make Plain Text from the Format menu") == Step(.menu, target: "Format > Make Plain Text"))
+        #expect(one("menu show sidebar") == Step(.menu, target: "show sidebar"))
+        #expect(one("File, export as PDF") == Step(.menu, target: "File > export as PDF"))
+        #expect(one("view my calendar") == nil || one("view my calendar")?.action != .menu)
+    }
+
+    @Test func scrollingAndBack() {
+        #expect(one("scroll down") == Step(.scroll, text: "down"))
+        #expect(one("scroll up 3 times") == Step(.scroll, text: "up", number: 3))
+        #expect(one("scroll to the bottom") == Step(.scroll, text: "bottom"))
+        #expect(one("neeche scroll karo") == Step(.scroll, text: "down"))
+        #expect(one("go back") == Step(.goBack))
+    }
+
+    @Test func typingIntoFields() {
+        #expect(one("type hello world in the search box") == Step(.typeInto, text: "hello world", target: "search"))
+        #expect(one("type jvm tuning in search") == Step(.typeInto, text: "jvm tuning", target: "search"))
+        // No field word: it's plain typing, even with "in the" inside
+        #expect(one("type I'll be in the office") == Step(.typeText, text: "I'll be in the office"))
+    }
+
+    @Test func chatsByName() {
+        #expect(one("open the family group on whatsapp") == Step(.draftMessage, contact: "family", channel: .whatsapp))
+        #expect(one("open design team chat on slack") == Step(.draftMessage, contact: "design team", channel: .slack))
+    }
+
+    @Test func clicksInsideMessagesStayInTheMessage() {
+        let c = parser.parse("whatsapp bhai saying please click the link and press submit")
+        #expect(c?.steps.count == 1)
+        #expect(c?.steps.first?.text == "please click the link and press submit")
+    }
+
+    @Test func appThenClick() {
+        #expect(parser.parse("open calculator and click 7")?.steps.map(\.action) == [.openApp, .click])
+    }
+
+    @Test func screenMatching() {
+        #expect(ScreenMatch.score(said: "export as pdf", label: "Export as PDF…") == 1)
+        #expect(ScreenMatch.score(said: "export", label: "Export as PDF…") == 0.9)
+        #expect(ScreenMatch.score(said: "send", label: "Sender settings and privacy options") < 0.8)
+        let labels = ["Save", "Save As…", "Send"]
+        if case .found(let l) = ScreenMatch.best("save", in: labels, label: { $0 }) { #expect(l == "Save") } else { Issue.record("expected Save") }
+        if case .ambiguous = ScreenMatch.best("family", in: ["Family", "family"], label: { $0 }) { Issue.record("same label twice is one thing") }
+        if case .ambiguous = ScreenMatch.best("design", in: ["Design team", "Design review"], label: { $0 }) {} else { Issue.record("two different matches must be ambiguous") }
+    }
+
+    @Test func keyCombos() {
+        #expect(KeyCombo.canonical("shift command t") == "cmd+shift+t")
+        #expect(KeyCombo.canonical("escape") == "escape")
+        #expect(KeyCombo.canonical("control option delete") == "ctrl+opt+delete")
+        #expect(KeyCombo.canonical("the door") == nil)
+    }
+
+    @Test func modelScreenActionsMustBeGrounded() {
+        let c = Command(utterance: "click the export button",
+                        steps: [Step(.click, target: "Export"), Step(.pressKey, text: "return")], source: .qwen)
+        #expect(Grounding.filter(c)?.steps == [Step(.click, target: "Export")])  // Return wasn't said
+    }
+}
+
 extension Command: Equatable {
     public static func == (a: Command, b: Command) -> Bool { a.steps == b.steps && a.utterance == b.utterance }
 }

@@ -5,6 +5,8 @@ import Foundation
 // Bolo.app/Contents/MacOS/Bolo                       -> menu-bar app
 // Bolo --say "open notes" [--dry-run] [--no-model]    -> run one command from the terminal
 // Bolo --doctor                                       -> what this Mac still needs
+// Bolo --listen [seconds] [--no-noise]                -> live transcript in Terminal; shows what Bolo would do
+// Bolo --remote "sentence" [--dry-run]                -> run it inside the running Bolo.app (token-protected)
 // Bolo --batch prompts.jsonl [--names a,b] [--no-model] -> understand each {"id","say"} line, print JSONL (never acts)
 let args = CommandLine.arguments
 
@@ -82,6 +84,53 @@ if let path = value(after: "--batch") {
         }
         print("✗ custom vocabulary failed after \(ms) ms (see: log show --last 2m --predicate 'subsystem == \"dev.prgupta.bolo\"')")
         exit(1)
+    }
+    RunLoop.main.run()
+} else if let text = value(after: "--remote") {
+    // Runs a sentence inside the running Bolo.app, with its permissions, as if spoken.
+    RemoteControl.send(text, dryRun: args.contains("--dry-run"))
+    print("Sent to Bolo: \(text)\(args.contains("--dry-run") ? " (dry run)" : ""). Watch the notch, or:")
+    print("  log show --last 1m --predicate 'subsystem == \"dev.prgupta.bolo\"' --style compact")
+    exit(0)
+} else if args.contains("--listen") {
+    // Speak into the Mac and watch the live transcript, then see what Bolo would do. Nothing runs.
+    //   Bolo --listen [seconds] [--no-noise]
+    Task { @MainActor in
+        var settings = Settings.load()
+        if args.contains("--no-noise") { settings.noiseSuppression = false }
+        let seconds = value(after: "--listen").flatMap(Double.init) ?? 5
+        let contacts = ContactBook()
+        await contacts.reload()
+        let engine = SpeechEngine(settings: settings)
+        engine.contextualStrings = contacts.spokenNames
+        engine.onText = { text in
+            print("\r\u{1B}[K  … \(text)", terminator: "")
+            fflush(stdout)
+        }
+        print("Listening for \(Int(seconds)) s. Speak now.")
+        do {
+            try await engine.start()
+        } catch {
+            print("✗ microphone didn't start: \(error.localizedDescription)")
+            exit(1)
+        }
+        try? await Task.sleep(for: .seconds(seconds))
+        let heard = await engine.stop()
+        print("\n")
+        print("Mic:          \(engine.micDescription), \(engine.stats.buffers) buffers, peak level \(String(format: "%.2f", engine.stats.maxLevel))")
+        print("Heard:        \(heard.text.isEmpty ? "(nothing)" : heard.text)")
+        print("Confidence:   \(heard.confidence.map { String(format: "%.2f", $0) } ?? "n/a")")
+        for (i, alt) in heard.alternatives.prefix(3).enumerated() { print("Alternative \(i + 1): \(alt)") }
+        let apps = Everyday.installedApps()
+        let parser = CommandParser(knownNames: contacts.spokenNames, knownApps: Set(apps.keys).union(AppNames.aliases.keys))
+        if let (command, index) = parser.parse(candidates: heard.candidates) {
+            let decision = SendPolicy.apply(command, confidence: heard.confidence, minConfidence: settings.minSendConfidence, usedAlternative: index > 0)
+            print("Bolo would:   " + decision.command.steps.map(\.summary).joined(separator: "  →  "))
+            if let reason = decision.reason { print("              (\(reason))") }
+        } else if !heard.text.isEmpty {
+            print("Bolo would:   ask Qwen (no phrase rule matched)")
+        }
+        exit(0)
     }
     RunLoop.main.run()
 } else if args.contains("--doctor") {

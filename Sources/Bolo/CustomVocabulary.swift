@@ -64,7 +64,7 @@ enum CustomVocabulary {
             where !old.lastPathComponent.contains(version) {
                 try? FileManager.default.removeItem(at: old)
             }
-            Log.speech.info("custom vocabulary ready: \(names.count) names, \(apps.count) apps, \(Int(Date().timeIntervalSince(started) * 1000)) ms")
+            Log.speech.notice("custom vocabulary ready: \(names.count) names, \(apps.count) apps, \(Int(Date().timeIntervalSince(started) * 1000)) ms")
             return config
         } catch {
             Log.speech.error("custom vocabulary failed: \(error.localizedDescription, privacy: .public)")

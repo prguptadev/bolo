@@ -50,7 +50,7 @@ actor QwenPlanner {
         let task = Task { () throws -> ModelContainer in
             let started = Date()
             let c = try await #huggingFaceLoadModelContainer(configuration: ModelConfiguration(id: Self.modelID))
-            Log.agent.info("Qwen loaded in \(Int(Date().timeIntervalSince(started) * 1000)) ms")
+            Log.agent.notice("Qwen loaded in \(Int(Date().timeIntervalSince(started) * 1000)) ms")
             return c
         }
         loading = task
@@ -64,7 +64,7 @@ actor QwenPlanner {
     func unload() {
         container = nil
         MLX.Memory.clearCache()
-        Log.agent.info("Qwen unloaded")
+        Log.agent.notice("Qwen unloaded")
     }
 
     private func scheduleUnload() {
@@ -88,7 +88,7 @@ actor QwenPlanner {
         let json = try await session.respond(to: utterance)
         scheduleUnload()
         let steps = ModelOutput.steps(fromJSON: json)
-        Log.agent.info("Qwen \(Int(Date().timeIntervalSince(started) * 1000)) ms: \(json, privacy: .public)")
+        Log.agent.notice("Qwen \(Int(Date().timeIntervalSince(started) * 1000)) ms: \(json, privacy: .public)")
         return Grounding.filter(Command(utterance: utterance, steps: steps, source: .qwen))
     }
 
@@ -100,6 +100,8 @@ actor QwenPlanner {
         - sendMessage / draftMessage: contact, text, channel (whatsapp, teams, imessage, mail) only if the user named the app
         - call: contact, channel | newNote: text | addReminder: text, time | typeText: text
         - setVolume: number | mute | unmute | lockScreen | joinNextMeeting | runShortcut: text
+        - On-screen: click: target (the button, row, tab or link label) | menu: target ("File > Export as PDF")
+          | typeInto: target (the field), text | scroll: text (up, down, top, bottom) | pressKey: text ("cmd+s", "return") | goBack
         Rules:
         - Copy the contact and the message text exactly from the user's words. Never invent or rephrase them.
         - Hinglish: "X ko ... karo / bhejo / bolo / bol do" = sendMessage to X; "likho" = draftMessage; "yaad dilana" = addReminder; "kholo" = openApp.
@@ -107,6 +109,7 @@ actor QwenPlanner {
         Examples:
         "bhai ko WhatsApp karo I'll be late" -> {"steps":[{"action":"sendMessage","contact":"bhai","channel":"whatsapp","text":"I'll be late"}]}
         "open slack and remind me at 4 to review the PR" -> {"steps":[{"action":"openApp","app":"Slack"},{"action":"addReminder","text":"review the PR","time":"at 4"}]}
+        "export this as a pdf from the file menu" -> {"steps":[{"action":"menu","target":"File > Export as PDF"}]}
         "how are you" -> {"steps":[]}
         """
 }

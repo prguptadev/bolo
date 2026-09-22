@@ -54,9 +54,21 @@ public struct CommandParser: Sendable {
             }
         }
         var steps: [Step] = []
+        var texts: [String] = []
         for group in groups {
             guard let step = parseClause(group) else { return nil }
+            // "tell bhai to click the link and press submit": a screen action right after a message is
+            // part of the message, never a separate click.
+            if step.action.drivesScreen, let last = steps.last, last.action == .sendMessage || last.action == .draftMessage,
+                let merged = parseClause(texts[texts.count - 1] + " and " + group),
+                merged.action == .sendMessage || merged.action == .draftMessage
+            {
+                steps[steps.count - 1] = merged
+                texts[texts.count - 1] += " and " + group
+                continue
+            }
             steps.append(step)
+            texts.append(group)
         }
         return Command(utterance: utterance, steps: steps, source: .rules)
     }
@@ -91,6 +103,7 @@ public struct CommandParser: Sendable {
         "(?:open|launch|start|switch to|send|message|text|whatsapp|teams|imessage|tell|remind|set a reminder|"
         + "search|google|youtube|look up|play|new note|create a note|make a note|add a note|take a note|note|"
         + "join|type|write|call|set volume|volume|mute|unmute|lock|run|go to|visit|"
+        + "click|tap|press|hit|select|choose|scroll|go back|copy|paste|undo|redo|save|close|new tab|new window|refresh|menu|"
         + "\\S+ ko (?:whatsapp|teams|message|msg|text|call|bolo|bhejo|batao))"
 
     private static let splitter = try! NSRegularExpression(
@@ -177,6 +190,11 @@ public struct CommandParser: Sendable {
         },
         Pattern("open (?:my )?(?<who>.+?)(?:'s|s) " + chatApp + "(?: chat)?(?: and (?<verb>send|write|type|likho) (?<msg>.+))?") {
             p, c in p.messageStep(who: c["who"], msg: c["msg"] ?? "", ch: c["ch"], send: c["verb"]?.lowercased() == "send")
+        },
+
+        // "open the family group on whatsapp" / "open design team chat on slack"
+        Pattern("open (?:the |my )?(?<who>.+?)(?: chat| group chat| group| channel)? (?:on|in) " + chatApp) { p, c in
+            p.messageStep(who: c["who"], msg: "", ch: c["ch"], send: false)
         },
 
         // English messaging.
@@ -269,6 +287,59 @@ public struct CommandParser: Sendable {
         Pattern("(?:screen|mac|laptop) lock karo") { _, _ in Step(.lockScreen) },
         Pattern("run (?:my |the )?(?<name>.+?) shortcut") { _, c in c["name"].map { Step(.runShortcut, text: $0) } },
         Pattern("run shortcut (?<name>.+)") { _, c in c["name"].map { Step(.runShortcut, text: $0) } },
+
+        // Screen control. Keys and shortcuts first, so "press enter" is a key and "save" isn't a click.
+        Pattern("press (?:the )?(?<keys>(?:(?:command|cmd|control|ctrl|option|alt|shift)[ +-]+)*(?:enter|return|escape|esc|tab|spacebar|space|delete|backspace|up|down|left|right|page up|page down|home|end|[a-z0-9]))(?: key)?") { _, c in
+            c["keys"].flatMap(KeyCombo.canonical).map { Step(.pressKey, text: $0) }
+        },
+        Pattern("(?<keys>enter|return|escape|tab|space|delete) (?:dabao|daba do|press karo)") { _, c in
+            c["keys"].flatMap(KeyCombo.canonical).map { Step(.pressKey, text: $0) }
+        },
+        Pattern("(?:open )?(?:a )?(?<name>select all|copy|paste|cut|undo|redo|save|close window|close tab|new tab|new window|refresh|reload|zoom in|zoom out)(?: (?:this|that|it|the file|the page|here|everything))?(?: karo| kar do)?") { _, c in
+            c["name"].flatMap { KeyCombo.named[$0.lowercased()] }.map { Step(.pressKey, text: $0) }
+        },
+        // Menus: "File menu export as PDF", "choose Make Plain Text from the Format menu", "menu Export as PDF"
+        Pattern("(?:click |choose |select |open |go to )?(?:the )?(?<menu>[a-z]+) menu (?:and )?(?:then )?(?:click |choose |select )?(?<item>.+)") { _, c in
+            guard let m = c["menu"], let i = c["item"] else { return nil }
+            return Step(.menu, target: m + " > " + i)
+        },
+        Pattern("(?:click|choose|select|pick) (?<item>.+?) (?:in|from|under) (?:the )?(?<menu>[a-z]+) menu") { _, c in
+            guard let m = c["menu"], let i = c["item"] else { return nil }
+            return Step(.menu, target: m + " > " + i)
+        },
+        Pattern("(?:use |click |choose |select )?(?:the )?menu (?:item |option )?(?<item>.+)") { _, c in
+            c["item"].map { Step(.menu, target: $0) }
+        },
+        Pattern("(?<menu>file|edit|view|format|window|help|history|bookmarks) (?<item>(?:export|save|print|open|close|new|duplicate|rename|move|revert|undo|redo|copy|paste|select|find|show|hide|enter|exit|zoom|minimize|make|convert|font|spelling|share)\\b.*)") { _, c in
+            guard let m = c["menu"], let i = c["item"] else { return nil }
+            return Step(.menu, target: m + " > " + i)
+        },
+        // Scrolling and going back
+        Pattern("scroll (?:to (?:the )?)?(?<dir>up|down|left|right|top|bottom)(?: (?:by )?(?<n>\\d+))?(?: (?:times|pages?))?") { _, c in
+            c["dir"].map { Step(.scroll, text: $0.lowercased(), number: c["n"].flatMap(Int.init)) }
+        },
+        Pattern("(?<dir>neeche|niche|upar|oopar)(?: scroll)? (?:karo|kar do|jao)") { _, c in
+            c["dir"].map { Step(.scroll, text: ["neeche", "niche"].contains($0.lowercased()) ? "down" : "up") }
+        },
+        Pattern("(?:go back|back|peeche jao|wapas jao|back jao)") { _, _ in Step(.goBack) },
+        // Typing into a named field: needs "field/box/bar/input" (or "search") so a message with "in the" isn't split
+        Pattern("(?:type|write|enter|likho) (?<text>.+) (?:in|into) (?:the )?(?<target>.+?) (?:field|box|bar|input)") { _, c in
+            guard let t = c["text"], let f = c["target"] else { return nil }
+            return Step(.typeInto, text: t, target: f)
+        },
+        Pattern("(?:type|write|enter) (?<text>.+) (?:in|into) (?:the )?(?<target>search|address bar|url bar)") { _, c in
+            guard let t = c["text"], let f = c["target"] else { return nil }
+            return Step(.typeInto, text: t, target: f)
+        },
+        // Clicking by label
+        Pattern("(?:click|tap|press|hit)(?: on)?(?: the)? (?<target>.+?)(?: button| link| tab| icon| option| checkbox| row)?") { _, c in
+            c["target"].map { Step(.click, target: $0) }
+        },
+        Pattern("(?:select|choose|pick)(?: the)? (?<target>.+?)(?: option| item| row)?") { _, c in
+            c["target"].map { Step(.click, target: $0) }
+        },
+        Pattern("(?<target>.+?) (?:pe|par) click (?:karo|kar do)") { _, c in c["target"].map { Step(.click, target: $0) } },
+        Pattern("(?<target>.+?) (?:dabao|daba do|press karo|click karo)") { _, c in c["target"].map { Step(.click, target: $0) } },
 
         // Typing into whatever is focused.
         Pattern("(?:type|write|likho|dictate)(?: this)?(?: saying)? (?<msg>.+)") { _, c in

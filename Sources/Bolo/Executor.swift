@@ -15,12 +15,28 @@ final class Executor {
     }
 
     func run(_ step: Step) async throws -> String {
+        // Never type or press anything into the lock screen (it's the "front app" while locked).
+        if MacControl.frontmostBundleID() == "com.apple.loginwindow" {
+            throw SkillError.failed("The Mac is locked. Unlock it first.")
+        }
         let messaging = Messaging(settings: settings, isCancelled: isCancelled)
         switch step.action {
         case .sendMessage, .draftMessage:
-            let person = try contacts.resolve(step.contact ?? "")
-            let channel = step.channel ?? person.channel ?? .whatsapp
-            return try await messaging.send(step, to: person, channel: channel, send: step.action == .sendMessage)
+            let send = step.action == .sendMessage
+            let text = step.text ?? ""
+            do {
+                let person = try contacts.resolve(step.contact ?? "")
+                let channel = step.channel ?? person.channel ?? .whatsapp
+                // No number/email for this app (or it's Slack): find the chat by name inside the app.
+                if (channel == .whatsapp && person.phone == nil) || (channel == .teams && person.email == nil) || channel == .slack {
+                    return try await messaging.sendByName(person.displayName, channel: channel, text: text, send: send)
+                }
+                return try await messaging.send(step, to: person, channel: channel, send: send)
+            } catch ResolveError.unknown(let who) {
+                // Not a contact, but you named the app ("open the family group on WhatsApp"): search its chats.
+                guard let channel = step.channel, [.whatsapp, .teams, .slack].contains(channel) else { throw ResolveError.unknown(who) }
+                return try await messaging.sendByName(who, channel: channel, text: text, send: send)
+            }
         case .call:
             let person = try contacts.resolve(step.contact ?? "")
             return try await messaging.call(person, channel: step.channel ?? .teams)
@@ -49,6 +65,18 @@ final class Executor {
             return Everyday.lockScreen()
         case .runShortcut:
             return try await Everyday.runShortcut(step.text ?? "")
+        case .click:
+            return try ScreenControl.click(step.target ?? "")
+        case .menu:
+            return try ScreenControl.menu(step.target ?? "")
+        case .typeInto:
+            return try await ScreenControl.typeInto(step.target ?? "", text: step.text ?? "")
+        case .scroll:
+            return try ScreenControl.scroll(step.text ?? "down", pages: step.number ?? 1)
+        case .pressKey:
+            return try ScreenControl.pressKey(step.text ?? "")
+        case .goBack:
+            return try ScreenControl.goBack()
         }
     }
 }

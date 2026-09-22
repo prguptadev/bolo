@@ -27,7 +27,7 @@ public enum ModelOutput {
 
     private struct RawStep: Decodable {
         var action: String
-        var app, contact, channel, text, time, engine: String?
+        var app, contact, channel, text, time, engine, target: String?
         var number: Flexible?
 
         var step: Step? {
@@ -47,7 +47,8 @@ public enum ModelOutput {
                 action, app: v(app).map(AppNames.canonical), contact: v(contact),
                 channel: v(channel).flatMap(Channel.from(spoken:)), text: text, time: v(time),
                 engine: action == .webSearch ? engine : nil,
-                number: v(number?.value).flatMap { Int($0.filter(\.isNumber)) })
+                number: v(number?.value).flatMap { Int($0.filter(\.isNumber)) },
+                target: v(target))
         }
     }
 }

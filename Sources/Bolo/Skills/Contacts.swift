@@ -95,7 +95,7 @@ final class ContactBook: @unchecked Sendable {
             if let close = Fuzzy.uniqueClose(who, in: known), close != who {
                 lock.unlock()
                 defer { lock.lock() }
-                Log.agent.info("contact \(spoken, privacy: .public) matched \(close, privacy: .public) by spelling")
+                Log.agent.notice("contact \(spoken, privacy: .public) matched \(close, privacy: .public) by spelling")
                 return try resolve(close)
             }
             throw ResolveError.unknown(spoken)

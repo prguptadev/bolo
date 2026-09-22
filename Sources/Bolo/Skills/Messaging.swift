@@ -57,8 +57,53 @@ struct Messaging {
             return send ? "Mailed \(person.displayName)" : "Mail draft to \(person.displayName) is open"
 
         case .slack:
-            throw SkillError.failed("Slack messages aren't supported yet. Say \"open Slack\" instead.")
+            return try await sendByName(person.displayName, channel: .slack, text: text, send: send)
         }
+    }
+
+    // MARK: - Chats found by name (groups, people without a saved number, Slack)
+
+    private static let chatApps: [Channel: (bundle: String, name: String, searchKey: String)] = [
+        .whatsapp: ("net.whatsapp.WhatsApp", "WhatsApp", "cmd+f"),
+        .teams: ("com.microsoft.teams2", "Teams", "cmd+e"),
+        .slack: ("com.tinyspeck.slackmacgap", "Slack", "cmd+k"),
+    ]
+
+    /// Opens the chat by searching the app for exactly `name`, types the text, and sends only if the
+    /// text box can be read back and holds exactly the message (stricter than the deep-link path).
+    func sendByName(_ name: String, channel: Channel, text: String, send: Bool) async throws -> String {
+        guard let app = Self.chatApps[channel] else { throw SkillError.failed("Can't search chats in \(channel.displayName).") }
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: app.bundle) else {
+            throw SkillError.failed("\(app.name) isn't installed.")
+        }
+        let config = NSWorkspace.OpenConfiguration()
+        config.activates = true
+        let running = try await NSWorkspace.shared.openApplication(at: url, configuration: config)
+        guard try await waitUntil(seconds: 8, { MacControl.frontmostBundleID() == app.bundle }) else {
+            throw SkillError.failed("\(app.name) didn't come to the front.")
+        }
+        try await Task.sleep(for: .milliseconds(400))
+        let pid = running.processIdentifier
+        let opened = try await ScreenControl.openChat(named: name, pid: pid, appName: app.name, searchKey: app.searchKey)
+        guard !text.isEmpty else { return opened }
+
+        await MacControl.paste(text)
+        let matched = try await waitUntil(seconds: 3) {
+            guard let value = MacControl.focusedText(pid: pid) else { return false }
+            return Self.same(value, text)
+        }
+        Log.skills.notice("\(app.name, privacy: .public) by-name compose matched=\(matched)")
+        if !send { return opened + " · draft typed" }
+        guard matched else {
+            throw SkillError.failed("Opened \(name) in \(app.name) but couldn't confirm the message box, so I didn't send.")
+        }
+        try await Task.sleep(for: .seconds(settings.sendDelaySeconds))
+        if isCancelled() { return "Cancelled. The draft is in \(app.name)." }
+        guard MacControl.frontmostBundleID() == app.bundle else {
+            throw SkillError.failed("\(app.name) lost focus, so I didn't send. The draft is still there.")
+        }
+        MacControl.press(.returnKey)
+        return "Sent to \(name) on \(app.name)"
     }
 
     func call(_ person: Person, channel: Channel) async throws -> String {
@@ -92,7 +137,7 @@ struct Messaging {
             readable = true
             return Self.same(value, text)
         }
-        Log.skills.info("\(app, privacy: .public) text box readable=\(readable) matched=\(matched)")
+        Log.skills.notice("\(app, privacy: .public) text box readable=\(readable) matched=\(matched)")
         if !send { return matched ? "Draft ready in \(app) for \(person.displayName)" : "Opened \(person.displayName)'s \(app) chat" }
         if readable && !matched {
             throw SkillError.failed("The \(app) text box doesn't show the message, so I didn't send it.")
@@ -113,7 +158,7 @@ struct Messaging {
         return "Sent to \(person.displayName) on \(app)"
     }
 
-    private func waitUntil(seconds: Double, _ condition: @escaping () -> Bool) async throws -> Bool {
+    func waitUntil(seconds: Double, _ condition: @escaping () -> Bool) async throws -> Bool {
         let deadline = Date().addingTimeInterval(seconds)
         while Date() < deadline {
             if isCancelled() { return false }
@@ -123,7 +168,7 @@ struct Messaging {
         return condition()
     }
 
-    private static func same(_ a: String, _ b: String) -> Bool {
+    static func same(_ a: String, _ b: String) -> Bool {
         func norm(_ s: String) -> String {
             s.lowercased().components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }.joined(separator: " ")
         }

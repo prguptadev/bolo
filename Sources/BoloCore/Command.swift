@@ -16,6 +16,16 @@ public enum Action: String, Codable, Sendable, CaseIterable {
     case unmute
     case lockScreen
     case runShortcut
+    // Driving any app's screen (Phase 4)
+    case click          // target: the button/row/tab label to press
+    case menu           // target: "File > Export as PDF", or just "Export as PDF"
+    case typeInto       // target: the field; text: what to type
+    case scroll         // text: up, down, left, right, top, bottom; number: how many pages
+    case pressKey       // text: a key combo like "cmd+shift+t" or "return"
+    case goBack
+
+    /// Actions that operate on whatever app is in front.
+    public var drivesScreen: Bool { [.click, .menu, .typeInto, .scroll, .pressKey, .goBack].contains(self) }
 }
 
 public enum Channel: String, Codable, Sendable, CaseIterable {
@@ -57,10 +67,13 @@ public struct Step: Codable, Sendable, Equatable {
     public var time: String?
     public var engine: SearchEngine?
     public var number: Int?
+    /// On-screen element for click / menu / typeInto.
+    public var target: String?
 
     public init(
         _ action: Action, app: String? = nil, contact: String? = nil, channel: Channel? = nil,
-        text: String? = nil, time: String? = nil, engine: SearchEngine? = nil, number: Int? = nil
+        text: String? = nil, time: String? = nil, engine: SearchEngine? = nil, number: Int? = nil,
+        target: String? = nil
     ) {
         self.action = action
         self.app = app
@@ -70,6 +83,7 @@ public struct Step: Codable, Sendable, Equatable {
         self.time = time
         self.engine = engine
         self.number = number
+        self.target = target
     }
 
     /// One line for the notch, e.g. "WhatsApp bhai · I'll be late".
@@ -93,6 +107,12 @@ public struct Step: Codable, Sendable, Equatable {
         case .unmute: "Unmute"
         case .lockScreen: "Lock screen"
         case .runShortcut: "Run shortcut \(text ?? "")"
+        case .click: "Click \(target ?? "")"
+        case .menu: "Menu \(target ?? "")"
+        case .typeInto: "Type into \(target ?? "") · \(text ?? "")"
+        case .scroll: "Scroll \(text ?? "down")"
+        case .pressKey: "Press \(text ?? "")"
+        case .goBack: "Go back"
         }
     }
 }

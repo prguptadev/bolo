@@ -45,8 +45,15 @@ public enum Grounding {
                 if let app = step.app, share(of: app, in: u) > 0 || appSpoken(app, in: u) { kept.append(step) }
             case .openURL:
                 if let t = step.text, share(of: t, in: u) > 0 { kept.append(step) }
-            case .joinNextMeeting, .setVolume, .mute, .unmute, .lockScreen:
+            case .joinNextMeeting, .setVolume, .mute, .unmute, .lockScreen, .scroll, .goBack:
                 kept.append(step)
+            case .click, .menu:
+                if let t = step.target, share(of: t.replacingOccurrences(of: ">", with: " "), in: u) >= 0.6 { kept.append(step) }
+            case .typeInto:
+                if let t = step.target, share(of: t, in: u) >= 0.6, textOK, step.text != nil { kept.append(step) }
+            case .pressKey:
+                // A model pressing Return in a chat would send; only keys the user named.
+                if let k = step.text, share(of: k.replacingOccurrences(of: "+", with: " ").replacingOccurrences(of: "cmd", with: "command"), in: u) >= 0.5 { kept.append(step) }
             }
         }
         // Models pad plans with repeats; drop exact duplicates.
@@ -63,7 +70,7 @@ public enum Grounding {
         var steps: [Step] = []
         for var s in command.steps {
             switch s.action {
-            case .call, .typeText, .lockScreen:
+            case .call, .typeText, .lockScreen, .click, .menu, .typeInto, .pressKey, .scroll, .goBack:
                 continue
             case .sendMessage:
                 s.action = .draftMessage

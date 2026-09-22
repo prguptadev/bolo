@@ -62,6 +62,8 @@ echo "Built $APP ($(du -sh "$APP" | cut -f1))"
 
 if [ "${1:-}" = "--install" ]; then
   pkill -x Bolo 2>/dev/null || true
+  # Wait for the old copy to exit, or `open` fails with -600.
+  for _ in $(seq 20); do pgrep -x Bolo >/dev/null || break; sleep 0.25; done
   mkdir -p "$HOME/Applications"
   rm -rf "$HOME/Applications/Bolo.app"
   cp -R "$APP" "$HOME/Applications/Bolo.app"

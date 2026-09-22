@@ -43,6 +43,7 @@ final class Agent: ObservableObject {
         executor.isCancelled = { [weak self] in MainActor.assumeIsolated { self?.cancelled ?? true } }
         speech.onText = { [weak self] in self?.transcript = $0 }
         speech.onLevel = { [weak self] in self?.level = $0 }
+        speech.prepare()
         Task { await reloadNames() }
     }
 
@@ -96,7 +97,14 @@ final class Agent: ObservableObject {
             let heard = await speech.stop()
             transcript = heard.text
             guard !heard.text.isEmpty else {
-                set(.idle)
+                // Say why nothing happened, instead of silently closing the notch.
+                if speech.stats.buffers == 0 {
+                    fail("No audio from the microphone. Check System Settings › Privacy & Security › Microphone › Bolo.")
+                } else if speech.stats.maxLevel < 0.02 {
+                    fail("Too quiet: didn't hear any speech. Hold right ⌥ while you talk.")
+                } else {
+                    fail("Didn't catch that. Try again, a little closer to the Mac.")
+                }
                 return
             }
             await handle(heard)
@@ -126,15 +134,16 @@ final class Agent: ObservableObject {
 
     // MARK: Understand and act
 
-    func handle(_ heard: Heard) async {
+    /// `act: false` shows and logs the plan without running it (remote dry runs).
+    func handle(_ heard: Heard, act: Bool = true) async {
         let text = heard.text
         lastUtterance = text
         transcript = text
         set(.working)
         let conf = heard.confidence.map { String(format: "%.2f", $0) } ?? "n/a"
-        Log.agent.info("heard: \(text, privacy: .public) (confidence \(conf, privacy: .public), \(heard.alternatives.count) alternatives)")
+        Log.agent.notice("heard: \(text, privacy: .public) (confidence \(conf, privacy: .public), \(heard.alternatives.count) alternatives)")
         guard var command = await understand(heard) else {
-            Log.agent.info("not understood")
+            Log.agent.notice("not understood")
             fail("Didn't catch a command. Try \"open Notes\" or \"bhai ko WhatsApp karo …\".")
             History.append(utterance: text, command: nil, results: [])
             return
@@ -144,10 +153,16 @@ final class Agent: ObservableObject {
         if let reason = decision.reason {
             command = decision.command
             message = reason
-            Log.agent.info("sends downgraded to drafts (confidence \(conf, privacy: .public), alternative \(self.usedAlternative))")
+            Log.agent.notice("sends downgraded to drafts (confidence \(conf, privacy: .public), alternative \(self.usedAlternative))")
         }
-        Log.agent.info("\(command.source.rawValue, privacy: .public): \(command.steps.map(\.summary).joined(separator: " | "), privacy: .public)")
+        Log.agent.notice("\(command.source.rawValue, privacy: .public): \(command.steps.map(\.summary).joined(separator: " | "), privacy: .public)")
         rows = command.steps.map { Row(text: $0.summary, status: .pending) }
+        guard act else {
+            message = "Dry run: nothing was done."
+            set(.done)
+            scheduleHide(after: 4)
+            return
+        }
         var results: [String] = []
         for (i, step) in command.steps.enumerated() {
             if cancelled {
@@ -161,7 +176,7 @@ final class Agent: ObservableObject {
                 let result = try await executor.run(step)
                 rows[i].status = .ok
                 rows[i].text = result
-                Log.skills.info("ok: \(result, privacy: .public)")
+                Log.skills.notice("ok: \(result, privacy: .public)")
                 results.append(result)
             } catch {
                 rows[i].status = .failed
@@ -183,7 +198,7 @@ final class Agent: ObservableObject {
         if let (command, index) = parser.parse(candidates: heard.candidates) {
             if index > 0 {
                 usedAlternative = true
-                Log.agent.info("used alternative #\(index): \(command.utterance, privacy: .public)")
+                Log.agent.notice("used alternative #\(index): \(command.utterance, privacy: .public)")
             }
             return command
         }
