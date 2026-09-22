@@ -1,5 +1,5 @@
 # /// script
-# requires-python = ">=3.11"
+# requires-python = ">=3.12"
 # ///
 """Phase 0, speech part: which speech engine hears your commands best, and does Bolo then do the
 right thing? Needs recordings from `uv run eval/record.py`.

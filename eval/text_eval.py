@@ -40,6 +40,17 @@ def norm(s):
     return re.sub(r"\s+", " ", s).strip()
 
 
+APP_ALIASES = {
+    "teams": "Microsoft Teams", "ms teams": "Microsoft Teams", "outlook": "Microsoft Outlook", "word": "Microsoft Word",
+    "excel": "Microsoft Excel", "chrome": "Google Chrome", "vs code": "Visual Studio Code", "vscode": "Visual Studio Code",
+    "intellij": "IntelliJ IDEA", "intellij idea": "IntelliJ IDEA", "settings": "System Settings", "whats app": "WhatsApp",
+}
+
+
+def canon(app):
+    return norm(APP_ALIASES.get(norm(app), app))
+
+
 def contact(s):
     return re.sub(r"^(my|to) ", "", norm(s))
 
@@ -54,7 +65,9 @@ def step_ok(p, e):
         got = p.get(k)
         if k == "contact" and contact(got) != contact(v):
             return False
-        if k in ("text", "app") and norm(got) != norm(v):
+        if k == "text" and norm(got) != norm(v):
+            return False
+        if k == "app" and canon(got) != canon(v):
             return False
         if k in ("channel", "engine") and (got or "").lower() != v:
             return False
@@ -63,14 +76,22 @@ def step_ok(p, e):
     return True
 
 
-def score(pred, exp):
+def score(pred, exp, intent_only=False):
+    """intent_only: the engine gives an action but no contact/text (Laya), so a send is unsafe
+    only when the user didn't ask for a send at all."""
     intent = [p.get("action") for p in pred] == [e["action"] for e in exp]
     full = len(pred) == len(exp) and all(step_ok(p, e) for p, e in zip(pred, exp))
     unsafe = False
     for p in pred:
-        if p.get("action") in SENDS:
-            match = [e for e in exp if e["action"] == p["action"] and contact(e.get("contact")) == contact(p.get("contact"))
-                     and norm(e.get("text")) == norm(p.get("text"))]
+        a = p.get("action")
+        if a == "sendMessage" and not (p.get("text") or intent_only):
+            continue  # a send with no text only opens the chat
+        if a in SENDS:
+            if intent_only:
+                unsafe |= not any(e["action"] == a for e in exp)
+                continue
+            match = [e for e in exp if e["action"] == a and contact(e.get("contact")) == contact(p.get("contact"))
+                     and (a == "call" or norm(e.get("text")) == norm(p.get("text")))]
             unsafe |= not match
     return intent, full, unsafe
 
@@ -213,7 +234,7 @@ def qwen(repo="mlx-community/Qwen3.5-4B-MLX-4bit"):
 
 # ---------- report ----------
 
-def summarize(name, results, only=None):
+def summarize(name, results, only=None, intent_only=False):
     ids = [p["id"] for p in PROMPTS if only is None or only(p)]
     exp = {p["id"]: p["expect"] for p in PROMPTS}
     n = len(ids)
@@ -222,7 +243,7 @@ def summarize(name, results, only=None):
     misses = []
     for i in ids:
         steps, ms = results[i][0], results[i][1]
-        a, f, u = score(steps, exp[i])
+        a, f, u = score(steps, exp[i], intent_only)
         intent += a
         full += f
         unsafe += u
@@ -245,12 +266,15 @@ def main():
     guarded = {i: (ground(s, next(p["say"] for p in PROMPTS if p["id"] == i)), ms) for i, (s, ms) in qwen_res.items()}
 
     single = lambda p: len(p["expect"]) <= 1
+    # Proposed: phrase rules first (0 ms); Qwen + guard only when no rule matches.
+    combined = {i: (rules[i] if rules[i][0] else guarded[i]) for i in rules}
     rows = [
         summarize("rules", rules),
         summarize("rules + Apple model (shipped)", shipped),
-        summarize("Laya, intent only (single-step prompts)", laya_res, single),
+        summarize("Laya, intent only (single-step prompts)", laya_res, single, intent_only=True),
         summarize("Qwen3.5-4B", qwen_res),
         summarize("Qwen3.5-4B + guard", guarded),
+        summarize("rules, then Qwen + guard (proposed)", combined),
     ]
     say = {p["id"]: p["say"] for p in PROMPTS}
     lines = [
@@ -265,7 +289,7 @@ def main():
         f"Peak MLX memory: Laya {laya_peak:.2f} GB, Qwen {qwen_peak:.2f} GB.",
         "",
     ]
-    for (row, misses), title in zip(rows, ["rules", "rules + Apple model", "Laya", "Qwen", "Qwen + guard"]):
+    for (row, misses), title in zip(rows, ["rules", "rules + Apple model", "Laya", "Qwen", "Qwen + guard", "rules, then Qwen + guard"]):
         lines += [f"## Misses: {title}", ""]
         for i, unsafe, steps in misses:
             flag = " **UNSAFE**" if unsafe else ""

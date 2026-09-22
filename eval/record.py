@@ -1,5 +1,5 @@
 # /// script
-# requires-python = ">=3.11"
+# requires-python = ">=3.12"
 # dependencies = ["sounddevice", "soundfile", "numpy"]
 # ///
 """Phase 0: record yourself saying each test prompt, for the speech comparison.
