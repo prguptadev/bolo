@@ -24,6 +24,9 @@ public enum Action: String, Codable, Sendable, CaseIterable {
     case pressKey       // text: a key combo like "cmd+shift+t" or "return"
     case goBack
     case calculate      // text: the arithmetic ("5+5", "18% of 2300"); answered in the notch
+    case answer         // text: an answer the model wrote; shown in the notch, nothing else happens
+    case lookup         // text: a web query; results summarised into the notch
+    case system         // target: a SystemOp ("emptyTrash", "battery", "quitApp"…); app/text as needed
 
     /// Actions that operate on whatever app is in front.
     public var drivesScreen: Bool { [.click, .menu, .typeInto, .scroll, .pressKey, .goBack].contains(self) }
@@ -70,11 +73,13 @@ public struct Step: Codable, Sendable, Equatable {
     public var number: Int?
     /// On-screen element for click / menu / typeInto.
     public var target: String?
+    /// The model wrote `text` itself (a joke, an email, an answer). Never sent on its own.
+    public var generated: Bool?
 
     public init(
         _ action: Action, app: String? = nil, contact: String? = nil, channel: Channel? = nil,
         text: String? = nil, time: String? = nil, engine: SearchEngine? = nil, number: Int? = nil,
-        target: String? = nil
+        target: String? = nil, generated: Bool? = nil
     ) {
         self.action = action
         self.app = app
@@ -85,6 +90,7 @@ public struct Step: Codable, Sendable, Equatable {
         self.engine = engine
         self.number = number
         self.target = target
+        self.generated = generated
     }
 
     /// One line for the notch, e.g. "WhatsApp bhai · I'll be late".
@@ -115,6 +121,9 @@ public struct Step: Codable, Sendable, Equatable {
         case .pressKey: "Press \(text ?? "")"
         case .goBack: "Go back"
         case .calculate: "Calculate \(text ?? "")"
+        case .answer: text ?? ""
+        case .lookup: "Look up · \(text ?? "")"
+        case .system: SystemOp(rawValue: target ?? "")?.summary(app: app, text: text) ?? (target ?? "")
         }
     }
 }

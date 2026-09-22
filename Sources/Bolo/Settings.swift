@@ -4,6 +4,8 @@ import Foundation
 struct Settings: Codable {
     /// Pause between the draft appearing and Bolo pressing send. Esc during it cancels.
     var sendDelaySeconds: Double = 0.8
+    /// Countdown before things that can't be undone (empty the Bin, restart, shut down). Esc stops it.
+    var irreversibleDelaySeconds: Double = 3
     /// Added to 10-digit phone numbers that have no country code.
     var defaultCountryCode: String = "91"
     /// Speech recognition locale. English (India) is installed on-device by macOS.
@@ -36,6 +38,7 @@ struct Settings: Codable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         let d = Settings()
         sendDelaySeconds = try c.decodeIfPresent(Double.self, forKey: .sendDelaySeconds) ?? d.sendDelaySeconds
+        irreversibleDelaySeconds = try c.decodeIfPresent(Double.self, forKey: .irreversibleDelaySeconds) ?? d.irreversibleDelaySeconds
         defaultCountryCode = try c.decodeIfPresent(String.self, forKey: .defaultCountryCode) ?? d.defaultCountryCode
         speechLocale = try c.decodeIfPresent(String.self, forKey: .speechLocale) ?? d.speechLocale
         speechEngine = try c.decodeIfPresent(String.self, forKey: .speechEngine) ?? d.speechEngine

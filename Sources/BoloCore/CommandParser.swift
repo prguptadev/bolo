@@ -101,6 +101,10 @@ public struct CommandParser: Sendable {
             steps.append(step)
             texts.append(group)
         }
+        // "new note a small joke" asks for a joke, not those words: leave writing to the model.
+        if steps.contains(where: { [.newNote, .typeText, .draftMessage, .sendMessage].contains($0.action) && Intent.isContentRequest($0.text ?? "") }) {
+            return nil
+        }
         return Command(utterance: utterance, steps: steps, source: .rules)
     }
 
@@ -393,6 +397,68 @@ public struct CommandParser: Sendable {
         Pattern("(?<target>.+?) (?:pe|par) click (?:karo|kar do)") { _, c in c["target"].map { Step(.click, target: $0) } },
         Pattern("(?<target>.+?) (?:dabao|daba do|press karo|click karo)") { _, c in c["target"].map { Step(.click, target: $0) } },
 
+        // Mac system operations (English and Hinglish).
+        Pattern("(?:empty|clear|clean)(?: out)? (?:the |my )?(?:trash|bin|dustbin|recycle bin)|(?:trash|bin|dustbin) (?:khali|saaf|empty|clear) (?:karo|kar do)") { _, _ in
+            CommandParser.system(.emptyTrash)
+        },
+        Pattern("open (?:the |my )?(?:trash|bin|dustbin)") { _, _ in CommandParser.system(.openTrash) },
+        Pattern("(?:open|show|go to) (?:my |the )?(?<f>downloads|desktop|documents|home|applications)(?: folder)?") { _, c in
+            CommandParser.system(.openFolder, text: c["f"]?.lowercased())
+        },
+        Pattern("(?:make|create|new) (?:a )?(?:new )?folder(?: (?:called|named) (?<name>.+))?") { _, c in
+            CommandParser.system(.newFolder, text: c["name"])
+        },
+        Pattern("eject (?:all )?(?:the )?(?:disks?|drives?|usb|pen ?drives?)") { _, _ in CommandParser.system(.ejectAll) },
+        Pattern("(?:put )?(?:the )?(?:mac|computer|laptop) (?:to )?sleep|sleep (?:the )?(?:mac|computer|laptop)|go to sleep|(?:mac|laptop) (?:ko )?(?:so ja|sula do)") { _, _ in
+            CommandParser.system(.sleep)
+        },
+        Pattern("(?:restart|reboot)(?: the)?(?: mac| computer| laptop)?|(?:mac|laptop) (?:ko )?restart (?:karo|kar do)") { _, _ in CommandParser.system(.restart) },
+        Pattern("(?:shut ?down|power off|turn off)(?: the)? (?:mac|computer|laptop)|shut ?down|(?:mac|laptop) (?:ko )?band (?:karo|kar do)") { _, _ in
+            CommandParser.system(.shutdown)
+        },
+        Pattern("(?:log|sign) ?out") { _, _ in CommandParser.system(.logout) },
+        Pattern("(?:turn on |enable |switch to )?dark mode(?: on| chalu (?:karo|kar do))?") { _, _ in CommandParser.system(.darkModeOn) },
+        Pattern("(?:turn off dark mode|dark mode off|disable dark mode|(?:turn on |switch to )?light mode)") { _, _ in CommandParser.system(.darkModeOff) },
+        Pattern("(?:take (?:a )?)?screen ?shot(?: lo| le lo)?") { _, _ in CommandParser.system(.screenshot) },
+        Pattern("(?:increase|raise|turn up) (?:the )?brightness|brightness (?:up|badhao|zyada karo)|(?:make (?:the )?screen )?brighter") { _, _ in
+            CommandParser.system(.brightnessUp)
+        },
+        Pattern("(?:decrease|lower|reduce|turn down) (?:the )?brightness|brightness (?:down|kam karo)|(?:make (?:the )?screen )?dimmer") { _, _ in
+            CommandParser.system(.brightnessDown)
+        },
+        Pattern("(?:turn )?(?<s>on|off) (?:the )?wi-?fi|wi-?fi (?<s2>on|off|chalu|band)(?: karo| kar do)?") { _, c in
+            let s = (c["s"] ?? c["s2"] ?? "").lowercased()
+            return CommandParser.system(s == "on" || s == "chalu" ? .wifiOn : .wifiOff)
+        },
+        Pattern("keep (?:the )?(?:mac|screen|laptop|computer) (?:awake|on)(?: for (?<n>\\d+) ?(?<u>minutes?|mins?|hours?))?") { _, c in
+            let text = c["n"].map { "\($0) \(c["u"] ?? "minutes")" }
+            return CommandParser.system(.keepAwake, text: text)
+        },
+        Pattern("(?:stop keeping (?:it |the mac )?awake|let (?:the )?(?:mac|screen) sleep)") { _, _ in CommandParser.system(.stopKeepAwake) },
+        Pattern("(?:how much |what(?:'s| is) (?:the |my )?)?battery(?: level| percentage| status| left)?(?: kitni hai| kitna hai)?") { _, _ in
+            CommandParser.system(.battery)
+        },
+        Pattern("(?:how much )?(?:free |empty )?(?:disk|storage|hard ?disk) (?:space)?(?: left| free| do i have)?(?: kitna hai)?|how much space (?:is left|do i have)") { _, _ in
+            CommandParser.system(.diskSpace)
+        },
+        Pattern("what(?:'s| is) (?:my )?ip(?: address)?|(?:my )?ip address") { _, _ in CommandParser.system(.ipAddress) },
+        Pattern("what(?:'s| is) the time|what time is it|(?:time|samay) (?:kya|kitna) (?:hai|hua)|kitne baje hain") { _, _ in CommandParser.system(.time) },
+        Pattern("what(?:'s| is) (?:the |today's )?date|what day is (?:it|today)|aaj (?:kya )?(?:date|tareekh) (?:hai|kya hai)") { _, _ in CommandParser.system(.date) },
+        Pattern("what(?:'s| is) (?:in |on )?(?:my |the )?clipboard|(?:read|show) (?:my |the )?clipboard") { _, _ in CommandParser.system(.clipboard) },
+        Pattern("clear (?:my |the )?clipboard") { _, _ in CommandParser.system(.clearClipboard) },
+        Pattern("(?:quit|close) (?:the )?(?<app>.+?)(?: app)?") { p, c in p.appStep(c["app"]).map { CommandParser.system(.quitApp, app: $0.app) } ?? nil },
+        Pattern("(?<app>.+?) (?:band karo|band kar do|quit karo)") { p, c in p.appStep(c["app"]).map { CommandParser.system(.quitApp, app: $0.app) } ?? nil },
+        Pattern("hide (?:the )?(?<app>.+?)(?: app)?") { p, c in p.appStep(c["app"]).map { CommandParser.system(.hideApp, app: $0.app) } ?? nil },
+        Pattern("minimi[sz]e(?: (?:this|the))?(?: window)?") { _, _ in CommandParser.system(.minimize) },
+        Pattern("(?:go |make it |enter )?full ?screen(?: karo)?") { _, _ in CommandParser.system(.fullScreen) },
+        Pattern("show (?:the |my )?desktop|desktop dikhao") { _, _ in CommandParser.system(.showDesktop) },
+        Pattern("(?:open |show )?mission control") { _, _ in CommandParser.system(.missionControl) },
+        Pattern("(?:play|pause|resume|stop)(?: the)?(?: music| song| video| spotify)?|(?:gaana|music) (?:chalao|band karo|roko)") { _, _ in
+            CommandParser.system(.playPause)
+        },
+        Pattern("(?:next|skip)(?: this)?(?: song| track)?|agla gaana") { _, _ in CommandParser.system(.nextTrack) },
+        Pattern("(?:previous|last|go back a) (?:song|track)|pichla gaana") { _, _ in CommandParser.system(.previousTrack) },
+
         // Typing into whatever is focused.
         Pattern("(?:type|write|likho|dictate)(?: this)?(?: saying)? (?<msg>.+)") { _, c in
             c["msg"].map { Step(.typeText, text: $0) }
@@ -465,6 +531,10 @@ public struct CommandParser: Sendable {
         }
         if text.isEmpty { return Step(.draftMessage, contact: who, channel: channel) }
         return Step(send ? .sendMessage : .draftMessage, contact: who, channel: channel, text: text)
+    }
+
+    static func system(_ op: SystemOp, app: String? = nil, text: String? = nil) -> Step {
+        Step(.system, app: app, text: text, target: op.rawValue)
     }
 
     static func channel(forApp app: String) -> Channel? {

@@ -30,7 +30,23 @@ public enum Grounding {
     public static func filter(_ command: Command) -> Command? {
         let u = command.utterance
         var kept: [Step] = []
-        for step in command.steps {
+        for var step in command.steps {
+            // Text the model wrote (a joke, an email, an answer) can't be checked against your words.
+            // It may go into notes, drafts, typing and the notch, but is never sent: sends become drafts.
+            if step.generated == true, let t = step.text, !t.isEmpty {
+                switch step.action {
+                case .newNote, .typeText, .answer:
+                    kept.append(step)
+                    continue
+                case .sendMessage, .draftMessage:
+                    guard let who = step.contact, share(of: who, in: u) == 1 else { return nil }
+                    step.action = .draftMessage
+                    kept.append(step)
+                    continue
+                default:
+                    break
+                }
+            }
             let contactOK = step.contact.map { share(of: $0, in: u) == 1 } ?? false
             let textOK = step.text.map { share(of: $0, in: u) >= 0.8 } ?? true
             switch step.action {
@@ -39,6 +55,16 @@ public enum Grounding {
                 kept.append(step)
             case .newNote, .typeText, .addReminder, .runShortcut:
                 if (step.text ?? "").isEmpty == false, textOK { kept.append(step) }
+            case .answer, .lookup:
+                if step.text?.isEmpty == false { kept.append(step) }
+            case .system:
+                // Risky operations (empty the bin, restart, quit…) only if you said the words for them.
+                guard let op = SystemOp(rawValue: step.target ?? "") else { continue }
+                if let words = op.mustHear, u.range(of: "\\b(?:" + words + ")", options: [.regularExpression, .caseInsensitive]) == nil { continue }
+                if op == .quitApp || op == .hideApp {
+                    guard let app = step.app, share(of: app, in: u) > 0 || appSpoken(app, in: u) else { continue }
+                }
+                kept.append(step)
             case .webSearch, .calculate:
                 if let t = step.text, share(of: t, in: u) >= 0.6 { kept.append(step) }
             case .openApp:
@@ -71,6 +97,8 @@ public enum Grounding {
         for var s in command.steps {
             switch s.action {
             case .call, .typeText, .lockScreen, .click, .menu, .typeInto, .pressKey, .scroll, .goBack:
+                continue
+            case .system where SystemOp(rawValue: s.target ?? "").map({ $0.mustHear != nil }) ?? true:
                 continue
             case .sendMessage:
                 s.action = .draftMessage

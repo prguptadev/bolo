@@ -9,6 +9,8 @@ final class Executor {
     var isCancelled: () -> Bool = { false }
     /// The app you were in when you started talking.
     var frontAtStart: String?
+    /// For summarising web lookups.
+    var qwen: QwenPlanner?
 
     private static let chatApps: Set<String> = [
         "net.whatsapp.WhatsApp", "com.microsoft.teams2", "com.tinyspeck.slackmacgap", "com.apple.MobileSMS",
@@ -22,8 +24,10 @@ final class Executor {
     }
 
     func run(_ step: Step) async throws -> String {
-        // Never type or press anything into the lock screen (it's the "front app" while locked).
-        if MacControl.frontmostBundleID() == "com.apple.loginwindow" {
+        // Never type, click or send while the screen is locked (keys would go to the password field).
+        // Opening apps, reminders, notes and the like don't touch the screen and are fine.
+        let touchesScreen = step.action.drivesScreen || [.typeText, .sendMessage, .draftMessage, .call].contains(step.action)
+        if touchesScreen, MacControl.isScreenLocked {
             throw SkillError.failed("The Mac is locked. Unlock it first.")
         }
         let messaging = Messaging(settings: settings, isCancelled: isCancelled)
@@ -94,6 +98,26 @@ final class Executor {
             return try ScreenControl.pressKey(step.text ?? "")
         case .goBack:
             return try ScreenControl.goBack()
+        case .answer:
+            return step.text ?? ""
+        case .lookup:
+            let query = step.text ?? ""
+            let result = try await WebLookup.search(query)
+            if let direct = result.direct { return direct }
+            guard let qwen, QwenPlanner.isDownloaded else { return (result.snippets.first ?? "Nothing found.") + " (\(result.source))" }
+            let answer = try await qwen.summarize(question: query, results: result.snippets)
+            return "\(answer) (\(result.source))"
+        case .system:
+            guard let op = SystemOp(rawValue: step.target ?? "") else { throw SkillError.failed("Unknown system action.") }
+            // Can't be undone: count down in the notch first. Esc stops it.
+            if op.irreversible {
+                for _ in 0..<Int(max(0, settings.irreversibleDelaySeconds) * 10) {
+                    if isCancelled() { return "Stopped: \(op.summary(app: step.app, text: step.text)) not done" }
+                    try await Task.sleep(for: .milliseconds(100))
+                }
+                if isCancelled() { return "Stopped" }
+            }
+            return try await SystemSkills.run(op, app: step.app, text: step.text, installed: installedApps)
         case .calculate:
             let spoken = step.text ?? ""
             guard let value = Arithmetic.evaluate(spoken), let expression = Arithmetic.expression(spoken) else {

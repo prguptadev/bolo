@@ -100,7 +100,7 @@ enum ScreenControl {
 
     static func front() throws -> FrontApp {
         guard MacControl.isTrusted else { throw SkillError.failed("Bolo needs Accessibility access to control apps.") }
-        guard let app = NSWorkspace.shared.frontmostApplication else { throw SkillError.failed("No app is in front.") }
+        guard let app = MacControl.frontApp() else { throw SkillError.failed("No app is in front.") }
         let el = AXUIElementCreateApplication(app.processIdentifier)
         AXUIElementSetMessagingTimeout(el, 1.0)
         return FrontApp(app: app, element: el)

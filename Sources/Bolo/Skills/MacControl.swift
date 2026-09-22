@@ -60,8 +60,21 @@ enum MacControl {
         return value as? String
     }
 
-    static func frontmostBundleID() -> String? {
-        NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+    /// The app you're actually using. macOS sometimes reports loginwindow as "frontmost" while the Mac
+    /// is unlocked; the app owning the menu bar is the reliable answer.
+    static func frontApp() -> NSRunningApplication? {
+        let menuOwner = NSWorkspace.shared.menuBarOwningApplication
+        let front = NSWorkspace.shared.frontmostApplication
+        if front?.bundleIdentifier == "com.apple.loginwindow", let menuOwner { return menuOwner }
+        return front ?? menuOwner
+    }
+
+    static func frontmostBundleID() -> String? { frontApp()?.bundleIdentifier }
+
+    /// Whether the screen is really locked, from the login session itself.
+    static var isScreenLocked: Bool {
+        guard let session = CGSessionCopyCurrentDictionary() as? [String: Any] else { return false }
+        return (session["CGSSessionScreenIsLocked"] as? Bool ?? false) || (session["CGSSessionScreenIsLocked"] as? Int ?? 0) == 1
     }
 
     static func running(_ bundleID: String) -> NSRunningApplication? {

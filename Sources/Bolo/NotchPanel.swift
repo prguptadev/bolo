@@ -102,7 +102,8 @@ struct NotchView: View {
             ForEach(agent.rows) { row in
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     icon(row.status).frame(width: 14)
-                    Text(row.text).font(.system(size: 14)).lineLimit(2)
+                    Text(row.text).font(.system(size: row.isAnswer ? 15 : 14)).lineLimit(row.isAnswer ? 10 : 2)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
             if let message = agent.message {

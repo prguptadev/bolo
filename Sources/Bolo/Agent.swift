@@ -12,6 +12,8 @@ final class Agent: ObservableObject {
         let id = UUID()
         var text: String
         var status: Status
+        /// Answers get room in the notch; action rows stay one or two lines.
+        var isAnswer = false
     }
 
     @Published private(set) var phase: Phase = .idle
@@ -45,6 +47,7 @@ final class Agent: ObservableObject {
         executor = Executor(settings: settings, contacts: contacts)
         speech = SpeechEngine(settings: settings)
         qwen = QwenPlanner(idleSeconds: settings.brainIdleSeconds)
+        executor.qwen = qwen
         let flag = cancelFlag
         executor.isCancelled = { flag.value }
         speech.onText = { [weak self] in self?.transcript = $0 }
@@ -168,7 +171,12 @@ final class Agent: ObservableObject {
             Log.agent.notice("sends downgraded to drafts (confidence \(conf, privacy: .public), alternative \(self.usedAlternative))")
         }
         Log.agent.notice("\(command.source.rawValue, privacy: .public): \(command.steps.map(\.summary).joined(separator: " | "), privacy: .public)")
-        rows = command.steps.map { Row(text: $0.summary, status: .pending) }
+        rows = command.steps.map { step in
+            let op = step.action == .system ? SystemOp(rawValue: step.target ?? "") : nil
+            let text = op?.irreversible == true
+                ? "\(step.summary) in \(Int(settings.irreversibleDelaySeconds)) s · Esc stops it" : step.summary
+            return Row(text: text, status: .pending, isAnswer: [.answer, .lookup, .calculate].contains(step.action) || op?.answersOnly == true)
+        }
         guard act else {
             message = "Dry run: nothing was done."
             set(.done)
@@ -202,7 +210,8 @@ final class Agent: ObservableObject {
         }
         History.append(utterance: text, command: command, results: results)
         set(cancelled ? .failed : .done)
-        scheduleHide(after: 2.5)
+        // Give answers time to be read.
+        scheduleHide(after: rows.contains(where: \.isAnswer) ? 12 : 2.5)
     }
 
     func understand(_ heard: Heard) async -> Command? {

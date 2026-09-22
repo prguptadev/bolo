@@ -29,6 +29,7 @@ public enum ModelOutput {
         var action: String
         var app, contact, channel, text, time, engine, target: String?
         var number: Flexible?
+        var generated: Bool?
 
         var step: Step? {
             guard let action = Action(rawValue: action) else { return nil }
@@ -48,7 +49,7 @@ public enum ModelOutput {
                 channel: v(channel).flatMap(Channel.from(spoken:)), text: text, time: v(time),
                 engine: action == .webSearch ? engine : nil,
                 number: v(number?.value).flatMap { Int($0.filter(\.isNumber)) },
-                target: v(target))
+                target: v(target), generated: generated == true ? true : nil)
         }
     }
 }

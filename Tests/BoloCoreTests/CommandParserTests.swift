@@ -335,6 +335,59 @@ private func one(_ s: String) -> Step? {
         #expect(p.parse(candidates: ["Open WhatsApp and type see you tomorrow"]) == nil)
     }
 
+    @Test func writeForMe() {
+        #expect(Intent.isContentRequest("a one small joke for me"))
+        #expect(Intent.isContentRequest("a polite leave application"))
+        #expect(!Intent.isContentRequest("milk eggs bread"))
+        #expect(!Intent.isContentRequest("the demo is on Friday"))
+        // The rules leave these to the model, which writes the text
+        #expect(parser.parse("new note a small joke") == nil)
+        #expect(parser.parse("new note milk eggs bread")?.steps.first?.text == "milk eggs bread")
+    }
+
+    @Test func generatedTextIsNeverSent() {
+        let c = Command(utterance: "tell bhai a joke on whatsapp",
+                        steps: [Step(.sendMessage, contact: "bhai", channel: .whatsapp, text: "Why did the JVM go to therapy?", generated: true)],
+                        source: .qwen)
+        #expect(Grounding.filter(c)?.steps.first?.action == .draftMessage)
+        let joke = Command(utterance: "in notes can you type a small joke for me",
+                           steps: [Step(.newNote, text: "Why do Java developers wear glasses? Because they don't C#.", generated: true)], source: .qwen)
+        #expect(Grounding.filter(joke)?.steps.count == 1)
+        // An invented recipient is still rejected
+        let invented = Command(utterance: "write a joke", steps: [Step(.draftMessage, contact: "Priya", text: "hi", generated: true)], source: .qwen)
+        #expect(Grounding.filter(invented) == nil)
+    }
+
+    @Test func systemCommands() {
+        func op(_ s: String) -> String? { let st = parser.parse(s)?.steps.first; return st?.action == .system ? st?.target : nil }
+        #expect(op("clear bin") == "emptyTrash")
+        #expect(op("empty the trash") == "emptyTrash")
+        #expect(op("dustbin khali karo") == "emptyTrash")
+        #expect(op("open downloads") == "openFolder")
+        #expect(op("put the mac to sleep") == "sleep")
+        #expect(op("restart the laptop") == "restart")
+        #expect(op("turn on dark mode") == "darkModeOn")
+        #expect(op("take a screenshot") == "screenshot")
+        #expect(op("battery kitni hai") == "battery")
+        #expect(op("how much disk space is left") == "diskSpace")
+        #expect(op("what's the time") == "time")
+        #expect(op("quit chrome") == "quitApp")
+        #expect(parser.parse("quit chrome")?.steps.first?.app == "Google Chrome")
+        #expect(op("next song") == "nextTrack")
+        #expect(op("pause the music") == "playPause")
+        #expect(op("turn off wifi") == "wifiOff")
+        #expect(op("keep the mac awake for 30 minutes") == "keepAwake")
+        #expect(op("quit the door") == nil)   // not an installed app
+    }
+
+    @Test func riskySystemOpsNeedTheWords() {
+        let sneaky = Command(utterance: "clean up my desktop", steps: [Step(.system, target: "emptyTrash")], source: .qwen)
+        #expect(Grounding.filter(sneaky) == nil)
+        let asked = Command(utterance: "please clear out the recycle bin", steps: [Step(.system, target: "emptyTrash")], source: .qwen)
+        #expect(Grounding.filter(asked)?.steps.count == 1)
+        #expect(SystemOp.emptyTrash.irreversible)
+    }
+
     @Test func arithmetic() {
         #expect(Arithmetic.evaluate("5+5") == 10)
         #expect(Arithmetic.evaluate("12 times 7") == 84)

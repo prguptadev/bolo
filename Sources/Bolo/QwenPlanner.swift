@@ -83,7 +83,7 @@ actor QwenPlanner {
         // A fresh session per sentence: no memory of earlier commands.
         let session = ChatSession(
             container, instructions: Self.instructions,
-            generateParameters: GenerateParameters(maxTokens: 220, temperature: 0),
+            generateParameters: GenerateParameters(maxTokens: 400, temperature: 0),
             additionalContext: ["enable_thinking": false])
         let json = try await session.respond(to: utterance)
         scheduleUnload()
@@ -92,28 +92,64 @@ actor QwenPlanner {
         return Grounding.filter(Command(utterance: utterance, steps: steps, source: .qwen))
     }
 
-    // The same instructions and examples measured in eval/text_eval.py.
+    /// Short answer from web results, for `lookup`.
+    func summarize(question: String, results: [String]) async throws -> String {
+        let container = try await load()
+        let session = ChatSession(
+            container,
+            instructions: """
+                Answer the question in at most two short sentences using only the search results below.
+                Keep numbers, names and dates exactly as written. If the results don't answer it, reply: I couldn't find that.
+                """,
+            generateParameters: GenerateParameters(maxTokens: 160, temperature: 0),
+            additionalContext: ["enable_thinking": false])
+        let prompt = "Question: \(question)\nSearch results:\n" + results.map { "- " + $0 }.joined(separator: "\n")
+        let answer = try await session.respond(to: prompt)
+        scheduleUnload()
+        return answer.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    // Do-commands keep the wording measured in eval/text_eval.py; write and ask were added after.
     static let instructions = """
-        You turn one spoken command for a Mac into JSON. The user speaks English or Hinglish.
-        Reply with only: {"steps": [ ... ]}. Each step has "action" and only the fields it needs:
-        - openApp: app | openURL: text (the address) | webSearch: text, engine ("google" or "youtube")
+        You are Bolo, a voice assistant on the user's Mac. Turn what they said into JSON. They speak English or Hinglish.
+        Reply with only: {"steps": [ ... ]}.
+
+        Three kinds of requests:
+        1. DO something on the Mac: use the actions below. Copy contact names and message words exactly from the user. Never invent them.
+        2. WRITE something for them (a joke, poem, email, reply, wish, list, ideas): write it yourself, short and good, in "text",
+           and add "generated": true. Put it where they asked: newNote, draftMessage to the named person, or typeText.
+           Match their language: Hinglish if they spoke Hinglish.
+        3. ASK a question:
+           - Facts that don't change (definitions, how-to, history, maths, general knowledge): {"action":"answer","text":"<one to three sentences>","generated":true}
+           - Anything current (weather, news, prices, scores, exchange rates, today's events, anything after 2025): {"action":"lookup","text":"<a search query>"}
+        If they aren't asking for anything, reply {"steps": []}.
+
+        Each step has "action" and only the fields it needs:
+        - openApp: app | openURL: text (the address) | webSearch: text, engine ("google" or "youtube") (only when they ask to search in the browser)
         - sendMessage / draftMessage: contact, text, channel (whatsapp, teams, imessage, mail) only if the user named the app
         - call: contact, channel | newNote: text | addReminder: text, time | typeText: text
         - setVolume: number | mute | unmute | lockScreen | joinNextMeeting | runShortcut: text
         - On-screen: click: target (the button, row, tab or link label) | menu: target ("File > Export as PDF")
           | typeInto: target (the field), text | scroll: text (up, down, top, bottom) | pressKey: text ("cmd+s", "return") | goBack
-        - calculate: text (just the arithmetic, like "5+5" or "18% of 2300"): Bolo shows the answer
+        - calculate: text (just the arithmetic, like "5+5" or "18% of 2300")
+        - answer: text, generated | lookup: text
+        - system: target (one of: emptyTrash, openTrash, openFolder, newFolder, ejectAll, sleep, restart, shutdown, logout,
+          darkModeOn, darkModeOff, screenshot, brightnessUp, brightnessDown, wifiOn, wifiOff, keepAwake, stopKeepAwake,
+          battery, diskSpace, ipAddress, time, date, clipboard, clearClipboard, quitApp, hideApp, minimize, fullScreen,
+          showDesktop, missionControl, playPause, nextTrack, previousTrack), plus app (for quitApp/hideApp) or text (folder name, duration)
         Rules:
-        - Copy the contact and the message text exactly from the user's words. Never invent or rephrase them.
         - "send / message / tell / text" = sendMessage. "write / type / draft a message" = draftMessage (typed, not sent).
         - "open WhatsApp and type <name>, <text>" = draftMessage to <name>. Never use typeText for a message in a chat app;
           if no person is named, reply {"steps": []}.
         - Hinglish: "X ko ... karo / bhejo / bolo / bol do / batao" = sendMessage to X; "likho" = draftMessage; "yaad dilana" = addReminder; "kholo" = openApp.
-        - One step per thing asked. If the user isn't asking the Mac to do anything, reply {"steps": []}.
+        - One step per thing asked.
         Examples:
         "bhai ko WhatsApp karo I'll be late" -> {"steps":[{"action":"sendMessage","contact":"bhai","channel":"whatsapp","text":"I'll be late"}]}
         "open slack and remind me at 4 to review the PR" -> {"steps":[{"action":"openApp","app":"Slack"},{"action":"addReminder","text":"review the PR","time":"at 4"}]}
         "export this as a pdf from the file menu" -> {"steps":[{"action":"menu","target":"File > Export as PDF"}]}
-        "how are you" -> {"steps":[]}
+        "in notes write a small joke for me" -> {"steps":[{"action":"newNote","text":"Why do programmers prefer dark mode? Because light attracts bugs.","generated":true}]}
+        "what is the capital of Japan" -> {"steps":[{"action":"answer","text":"Tokyo.","generated":true}]}
+        "weather in Pune today" -> {"steps":[{"action":"lookup","text":"weather in Pune"}]}
+        "I was thinking about calling mom later" -> {"steps":[]}
         """
 }
