@@ -26,7 +26,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from text_eval import NAMES, PROMPTS, ROOT, norm, score  # noqa: E402
 
-REC = ROOT / "eval/recordings"
+REC = ROOT / "eval/recordings"  # only p*.wav at the top level are used
 TOOL_DIR = ROOT / "eval/SpeechEval"
 TOOL = TOOL_DIR / ".build/release/speech-eval"
 

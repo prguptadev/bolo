@@ -3,8 +3,8 @@ import Foundation
 import Speech
 import WhisperKit
 
-// speech-eval apple   <dir of .wav> [--locale en_IN]
-// speech-eval whisper <dir of .wav> [--lang en|hi|auto] [--model large-v3-v20240930_626MB]
+// speech-eval apple   <dir of .wav, or one .wav> [--locale en_IN]
+// speech-eval whisper <dir of .wav, or one .wav> [--lang en|hi|auto] [--model large-v3-v20240930_626MB]
 // Prints one JSON line per file: {"id","text","ms"}. First line is {"id":"_load","ms":…} (model load time).
 
 let args = CommandLine.arguments
@@ -18,9 +18,10 @@ func option(_ name: String, _ fallback: String) -> String {
 }
 
 let engine = args[1]
-let dir = URL(fileURLWithPath: args[2])
-let files = ((try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? [])
+let input = URL(fileURLWithPath: args[2])
+let files = (input.pathExtension == "wav" ? [input] : ((try? FileManager.default.contentsOfDirectory(at: input, includingPropertiesForKeys: nil)) ?? []))
     .filter { $0.pathExtension == "wav" }
+    .filter { ((try? AVAudioFile(forReading: $0).length) ?? 0) > 1600 }  // skip empty/<0.1 s files (the analyzer never finishes on them)
     .sorted { $0.lastPathComponent < $1.lastPathComponent }
 
 func emit(_ id: String, _ text: String?, _ ms: Double) {
