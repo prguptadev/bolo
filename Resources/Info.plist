@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>dev.prgupta.bolo</string>
+    <key>CFBundleName</key>
+    <string>Bolo</string>
+    <key>CFBundleDisplayName</key>
+    <string>Bolo</string>
+    <key>CFBundleExecutable</key>
+    <string>Bolo</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>26.0</string>
+    <key>LSUIElement</key>
+    <true/>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Bolo listens only while you hold the right Option key, and turns what you say into actions on this Mac.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>Bolo turns your speech into text on this Mac. Nothing is sent to a server.</string>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>Bolo controls apps like Messages, Notes and Mail when you ask it to by voice.</string>
+    <key>NSContactsUsageDescription</key>
+    <string>Bolo looks up the person you name, like "bhai" or "Priya", to message them.</string>
+    <key>NSRemindersFullAccessUsageDescription</key>
+    <string>Bolo adds reminders when you say "remind me…".</string>
+    <key>NSCalendarsFullAccessUsageDescription</key>
+    <string>Bolo reads your calendar to join your next meeting.</string>
+</dict>
+</plist>

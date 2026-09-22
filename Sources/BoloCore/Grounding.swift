@@ -1,0 +1,64 @@
+import Foundation
+
+/// Rejects model output that isn't backed by what the user actually said.
+///
+/// Measured on this Mac: for "new note groceries milk eggs bread" Apple's on-device model added a
+/// WhatsApp message to "Priya" that the user never said. Bolo acts without asking, so every
+/// contact and every word it sends must come from the utterance.
+public enum Grounding {
+    private static let fillers: Set<String> = [
+        "a", "an", "the", "to", "and", "or", "of", "on", "in", "at", "for", "is", "it", "i", "me", "my",
+        "please", "saying", "that", "ko", "ki", "karo",
+    ]
+
+    static func words(_ s: String) -> [String] {
+        s.lowercased()
+            .replacingOccurrences(of: "[^\\p{L}\\p{N}' ]", with: " ", options: .regularExpression)
+            .split(separator: " ").map(String.init)
+    }
+
+    /// Share of `phrase`'s meaningful words that also appear in `utterance` (1.0 when nothing to check).
+    public static func share(of phrase: String, in utterance: String) -> Double {
+        let said = Set(words(utterance))
+        let wanted = words(phrase).filter { !fillers.contains($0) }
+        guard !wanted.isEmpty else { return 1 }
+        return Double(wanted.filter(said.contains).count) / Double(wanted.count)
+    }
+
+    /// Keeps only steps whose slots come from the utterance. Returns nil when nothing safe is left,
+    /// or when any message/call step is ungrounded (never drop half of a send and run the rest).
+    public static func filter(_ command: Command) -> Command? {
+        let u = command.utterance
+        var kept: [Step] = []
+        for step in command.steps {
+            let contactOK = step.contact.map { share(of: $0, in: u) == 1 } ?? false
+            let textOK = step.text.map { share(of: $0, in: u) >= 0.8 } ?? true
+            switch step.action {
+            case .sendMessage, .draftMessage, .call:
+                guard contactOK, textOK else { return nil }
+                kept.append(step)
+            case .newNote, .typeText, .addReminder, .runShortcut:
+                if (step.text ?? "").isEmpty == false, textOK { kept.append(step) }
+            case .webSearch:
+                if let t = step.text, share(of: t, in: u) >= 0.6 { kept.append(step) }
+            case .openApp:
+                if let app = step.app, share(of: app, in: u) > 0 || appSpoken(app, in: u) { kept.append(step) }
+            case .openURL:
+                if let t = step.text, share(of: t, in: u) > 0 { kept.append(step) }
+            case .joinNextMeeting, .setVolume, .mute, .unmute, .lockScreen:
+                kept.append(step)
+            }
+        }
+        // Models pad plans with repeats; drop exact duplicates.
+        var unique: [Step] = []
+        for s in kept where !unique.contains(s) { unique.append(s) }
+        guard !unique.isEmpty else { return nil }
+        return Command(utterance: u, steps: unique, source: command.source)
+    }
+
+    /// "Microsoft Teams" is fine when the user said "teams".
+    private static func appSpoken(_ app: String, in utterance: String) -> Bool {
+        let said = utterance.lowercased()
+        return AppNames.aliases.contains { said.contains($0.key) && $0.value.lowercased() == app.lowercased() }
+    }
+}
