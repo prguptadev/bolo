@@ -4,9 +4,18 @@ import Foundation
 
 // Bolo.app/Contents/MacOS/Bolo                       -> menu-bar app
 // Bolo --say "open notes" [--dry-run] [--no-model]    -> run one command from the terminal
+// Bolo --doctor                                       -> what this Mac still needs
 let args = CommandLine.arguments
 
-if let i = args.firstIndex(of: "--say"), i + 1 < args.count {
+if args.contains("--doctor") {
+    Task { @MainActor in
+        print("Bolo setup check (permission lines describe the app you ran this from, e.g. Terminal;")
+        print("use \"Check setup…\" in Bolo's menu for Bolo.app's own permissions)\n")
+        for line in await SetupCheck.run() { print(line.rendered) }
+        exit(0)
+    }
+    RunLoop.main.run()
+} else if let i = args.firstIndex(of: "--say"), i + 1 < args.count {
     let text = args[i + 1]
     let dryRun = args.contains("--dry-run")
     let useModel = !args.contains("--no-model")

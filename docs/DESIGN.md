@@ -37,7 +37,12 @@ right ⌥ released ────────────────►│
 | Sign with the Apple Development certificate | Keeps Accessibility/Microphone grants across rebuilds (ad-hoc signatures change every build). |
 | No Docker, no Python, no server | One ~1 MB app, ~50 MB RSS idle. |
 
-## Constraints on this Mac (2026-09-22)
+## Machines
+
+- **M5 Mac** runs Bolo day to day (disk space, Xcode). Setup: `docs/SETUP.md`; updates: `scripts/update.sh`.
+- **M4 Air** is for code, builds and tests only (Command Line Tools, little disk).
+
+## Constraints on the M4 Air (2026-09-22)
 
 - No Xcode: MLX Swift (local Qwen, vision model) can't be built until Xcode is installed.
 - 4.3 GB free disk: model downloads (Whisper for Hinglish 0.65 GB, Laya 0.93 GB, Qwen3.5-4B 3.06 GB) wait until space is freed.

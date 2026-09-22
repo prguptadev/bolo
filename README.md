@@ -37,7 +37,9 @@ every contact and message word appears in what you said (see "Safety").
 
 ## Install
 
-Requires macOS 26 on Apple silicon and the Xcode Command Line Tools (full Xcode isn't needed).
+Step-by-step for a new Mac, with a test checklist: **[docs/SETUP.md](docs/SETUP.md)**.
+
+Requires macOS 26 on Apple silicon and Xcode or the Xcode Command Line Tools.
 
 ```bash
 scripts/build-app.sh --install
@@ -62,7 +64,7 @@ or to set a default app per person, edit **Nicknames…** from the menu bar:
 
 ```json
 {
-  "bhai": { "name": "Rahul", "phone": "+91 98765 43210", "channel": "whatsapp" },
+  "bhai": { "name": "Rahul", "phone": "+91 XXXXX XXXXX", "channel": "whatsapp" },
   "priya": { "name": "Priya Sharma", "email": "priya@company.com", "channel": "teams" }
 }
 ```
@@ -87,7 +89,9 @@ Bolo acts without asking, so it's built not to act on things you didn't say:
 ## Development
 
 ```bash
+scripts/update.sh                                 # on the Mac that runs Bolo: pull, test, rebuild, relaunch
 scripts/test.sh                                   # parser, grounding and time tests
+.build/debug/Bolo --doctor                        # what this Mac still needs
 swift build && .build/debug/Bolo --say "open notes" --dry-run    # see how a sentence is understood
 .build/debug/Bolo --say "volume 30"               # run a command without speaking
 ```

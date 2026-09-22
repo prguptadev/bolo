@@ -68,6 +68,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func openHistory() { NSWorkspace.shared.open(Settings.historyURL) }
     @objc private func reload() { Task { await agent.reloadNames() } }
 
+    @objc private func checkSetup() {
+        Task {
+            let lines = await SetupCheck.run()
+            let alert = NSAlert()
+            alert.messageText = lines.allSatisfy(\.ok) ? "Bolo is ready" : "Bolo setup"
+            alert.informativeText = lines.map(\.rendered).joined(separator: "\n")
+            alert.addButton(withTitle: "OK")
+            if !MacControl.isTrusted { alert.addButton(withTitle: "Open Accessibility settings") }
+            NSApp.activate()
+            if alert.runModal() == .alertSecondButtonReturn { openAccessibility() }
+        }
+    }
+
     @objc private func openAccessibility() {
         NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
     }
@@ -89,6 +102,7 @@ extension AppDelegate: NSMenuDelegate {
             menu.addItem(item)
         }
         menu.addItem(.separator())
+        menu.addItem(NSMenuItem(title: "Check setup…", action: #selector(checkSetup), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "Nicknames…", action: #selector(openNicknames), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "Reload contacts and apps", action: #selector(reload), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "Settings file…", action: #selector(openSettings), keyEquivalent: ""))

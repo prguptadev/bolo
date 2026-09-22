@@ -66,6 +66,7 @@ final class Agent: ObservableObject {
             do {
                 try await speech.start()
             } catch {
+                Log.speech.error("start failed: \(error.localizedDescription, privacy: .public)")
                 fail("Couldn't start the microphone: \(error.localizedDescription)")
             }
         }
@@ -113,11 +114,14 @@ final class Agent: ObservableObject {
         lastUtterance = text
         transcript = text
         set(.working)
+        Log.agent.info("heard: \(text, privacy: .public)")
         guard let command = await understand(text) else {
+            Log.agent.info("not understood")
             fail("Didn't catch a command. Try \"open Notes\" or \"bhai ko WhatsApp karo …\".")
             History.append(utterance: text, command: nil, results: [])
             return
         }
+        Log.agent.info("\(command.source.rawValue, privacy: .public): \(command.steps.map(\.summary).joined(separator: " | "), privacy: .public)")
         rows = command.steps.map { Row(text: $0.summary, status: .pending) }
         var results: [String] = []
         for (i, step) in command.steps.enumerated() {
@@ -132,10 +136,12 @@ final class Agent: ObservableObject {
                 let result = try await executor.run(step)
                 rows[i].status = .ok
                 rows[i].text = result
+                Log.skills.info("ok: \(result, privacy: .public)")
                 results.append(result)
             } catch {
                 rows[i].status = .failed
                 results.append("error: \(error.localizedDescription)")
+                Log.skills.error("failed: \(step.summary, privacy: .public): \(error.localizedDescription, privacy: .public)")
                 History.append(utterance: text, command: command, results: results)
                 // Later steps may depend on this one, so stop here.
                 fail(error.localizedDescription)

@@ -92,6 +92,7 @@ struct Messaging {
             readable = true
             return Self.same(value, text)
         }
+        Log.skills.info("\(app, privacy: .public) text box readable=\(readable) matched=\(matched)")
         if !send { return matched ? "Draft ready in \(app) for \(person.displayName)" : "Opened \(person.displayName)'s \(app) chat" }
         if readable && !matched {
             throw SkillError.failed("The \(app) text box doesn't show the message, so I didn't send it.")

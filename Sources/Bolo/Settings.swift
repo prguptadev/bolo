@@ -51,7 +51,7 @@ enum Nicknames {
                 {
                   "_example_bhai": {
                     "name": "Rahul",
-                    "phone": "+91 98765 43210",
+                    "phone": "+91 XXXXX XXXXX",
                     "email": "rahul@company.com",
                     "channel": "whatsapp"
                   }
