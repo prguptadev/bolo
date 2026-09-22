@@ -139,6 +139,7 @@ Plus a screenshot of menu bar icon › **Check setup…**.
 | Symptom | Likely cause |
 |---|---|
 | Holding right ⌥ does nothing | Accessibility is off, or Bolo wasn't relaunched after turning it on |
+| The notch stays on "Listening…" or shows no words | Run `~/Applications/Bolo.app/Contents/MacOS/Bolo --listen 5` in Terminal and speak: it shows the live transcript, mic level and what Bolo would do |
 | Notch says "Listening…" but no words appear | Microphone denied, or the speech model is still downloading (first use needs internet) |
 | "I don't know who …" | Add the nickname, then Reload contacts and apps |
 | WhatsApp opens but doesn't send | The log line `text box readable=… matched=…` shows why; Bolo won't send if the box doesn't hold your exact message |

@@ -31,6 +31,12 @@ on-device language model as a fallback. The app is under 1 MB and uses about 50 
 | `volume 30` · `mute` · `lock the screen` | System controls |
 | `run my standup shortcut` | Runs one of your Shortcuts |
 | `… and remind me at 5 to call her` | Chains steps with *and / then / aur* |
+| `click Send` · `Save pe click karo` · `submit dabao` | Presses that button, row, tab or link in the app in front |
+| `File menu export as PDF` · `choose Make Plain Text from the Format menu` | Any menu item in any app |
+| `press command shift t` · `select all` · `copy` · `save karo` · `new tab` | Keys and shortcuts |
+| `type hello in the search box` | Types into that field |
+| `scroll down 3 times` · `neeche scroll karo` · `go back` | Scrolls or goes back |
+| `open the family group on whatsapp` · `whatsapp design team saying …` | Finds a chat by name (groups, or people without a saved number); only on one exact match |
 
 Sentences that don't match a pattern go to Apple's on-device model. Its output is only used if
 every contact and message word appears in what you said (see "Safety").
@@ -92,6 +98,8 @@ Bolo acts without asking, so it's built not to act on things you didn't say:
 scripts/update.sh                                 # on the Mac that runs Bolo: pull, test, rebuild, relaunch
 scripts/test.sh                                   # parser, grounding and time tests
 .build/debug/Bolo --doctor                        # what this Mac still needs
+~/Applications/Bolo.app/Contents/MacOS/Bolo --listen 5          # speak; see the live transcript and what Bolo would do
+~/Applications/Bolo.app/Contents/MacOS/Bolo --remote "open calculator" [--dry-run]   # run a sentence inside Bolo.app
 swift build && .build/debug/Bolo --say "open notes" --dry-run    # see how a sentence is understood
 .build/debug/Bolo --say "volume 30"               # run a command without speaking
 ```

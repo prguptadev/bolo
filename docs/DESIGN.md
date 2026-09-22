@@ -69,6 +69,6 @@ right ⌥ released ──┤ +350 ms tail
 | 2 | Everyday skills: apps, WhatsApp/Teams/iMessage/Mail, notes, reminders, meetings, search, system | Done (first cut) |
 | 0 | Measure: text eval (done), speech eval on 50 recordings | Done |
 | 3 | Qwen3.5-4B in the app via MLX; noise suppression; recording-driven hearing fixes; send policy | Done |
-| 4 | Drive any app's screen through Accessibility; chat search by name | Next |
+| 4 | Drive any app's screen through Accessibility (click by label, menus, keys, fields, scroll); chats by name in WhatsApp/Teams/Slack | Done; live-tested on Calculator pending an unlocked Mac |
 | 5 | Screen text recognition, click by visible text, vision model | Later |
 | 6 | Routines, Laya fine-tuned on history, allow-listed terminal commands | Later |
