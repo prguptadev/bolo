@@ -295,6 +295,12 @@ private func one(_ s: String) -> Step? {
         #expect(forget?.text == "pay the electricity bill")
     }
 
+    @Test func bajiyaDeLana() {
+        let s = first("Mujhe, Che, Bajiya, De Lana, Ki, Jim,  Jana Hai.")
+        #expect(s?.action == .addReminder)
+        #expect(s?.time == "6 baje")
+    }
+
     @Test func moreEnglishPhrasings() {
         #expect(first("Could you pull up my calendar?") == Step(.openApp, app: "Calendar"))
         #expect(first("Let Priya know on teams that deployment is done.") == Step(.sendMessage, contact: "Priya", channel: .teams, text: "deployment is done"))

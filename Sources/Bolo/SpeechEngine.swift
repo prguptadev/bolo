@@ -21,19 +21,23 @@ struct Heard {
 final class MicStats: @unchecked Sendable {
     private let lock = NSLock()
     private var _buffers = 0
+    private var _converted = 0
     private var _maxLevel: Float = 0
 
-    func record(level: Float?) {
+    func record(level: Float?, converted: Bool) {
         lock.withLock {
             _buffers += 1
+            if converted { _converted += 1 }
             if let level { _maxLevel = max(_maxLevel, level) }
         }
     }
 
     var buffers: Int { lock.withLock { _buffers } }
+    /// Buffers that reached the speech engine. 0 while `buffers` grows means conversion is failing.
+    var converted: Int { lock.withLock { _converted } }
     var maxLevel: Float { lock.withLock { _maxLevel } }
 
-    func reset() { lock.withLock { _buffers = 0; _maxLevel = 0 } }
+    func reset() { lock.withLock { _buffers = 0; _converted = 0; _maxLevel = 0 } }
 }
 
 /// Streams the microphone into Apple's on-device speech engine while the key is held.
@@ -194,8 +198,8 @@ final class SpeechEngine {
         Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(700))
             guard let self, self.input != nil, self.noiseSuppression else { return }
-            if self.stats.buffers == 0 || self.stats.maxLevel == 0 {
-                Log.speech.error("no audio with voice processing (\(self.stats.buffers) buffers); switching it off for this session")
+            if self.stats.buffers == 0 || self.stats.maxLevel == 0 || self.stats.converted == 0 {
+                Log.speech.error("no usable audio with voice processing (\(self.stats.buffers) buffers, \(self.stats.converted) converted); switching it off for this session")
                 try? self.restartMicrophoneWithoutVoiceProcessing(into: continuation, format: format)
             }
         }
@@ -228,20 +232,19 @@ final class SpeechEngine {
         }
         let micFormat = node.outputFormat(forBus: 0)
         micDescription = "\(Int(micFormat.sampleRate)) Hz, \(micFormat.channelCount) ch, voice processing \(noiseSuppression ? "on" : "off")"
-        let converter = format.flatMap { $0 == micFormat ? nil : AVAudioConverter(from: micFormat, to: $0) }
+        // Voice processing can hand over 7+ channels (processed voice in the first); the converter
+        // can't turn 7 into 1, so take the first channel ourselves, then resample.
+        let mono = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: micFormat.sampleRate, channels: 1, interleaved: false)!
+        let converter = format.flatMap { $0 == mono ? nil : AVAudioConverter(from: mono, to: $0) }
         let levelHandler = onLevel
         let stats = self.stats
         node.installTap(onBus: 0, bufferSize: 2048, format: micFormat) { buffer, _ in
-            let level = Self.rms(buffer)
-            stats.record(level: level)
+            let voice = Self.firstChannel(buffer, as: mono)
+            let level = voice.flatMap(Self.rms)
+            let out = voice.flatMap { Self.resample($0, with: converter, to: format) }
+            stats.record(level: level, converted: out != nil)
             if let level { Task { @MainActor in levelHandler?(level) } }
-            if let converter, let format {
-                if let converted = Self.convert(buffer, with: converter, to: format) {
-                    continuation.yield(AnalyzerInput(buffer: converted))
-                }
-            } else {
-                continuation.yield(AnalyzerInput(buffer: buffer))
-            }
+            if let out { continuation.yield(AnalyzerInput(buffer: out)) }
         }
         audio.prepare()
         try audio.start()
@@ -258,6 +261,54 @@ final class SpeechEngine {
         onText?(current)
     }
 
+    /// Test without a microphone: feeds a recording through the same channel-and-resample path as the
+    /// mic, widened to `channels` (speech in the first, silence in the rest) like voice processing does.
+    func transcribe(file url: URL, channels: Int) async throws -> Heard {
+        segments = []
+        volatile = ""
+        let module = makeModule(resultsTo: self)
+        // Tests may block on the (per-app) model reservation; key presses never do.
+        if await AssetInventory.status(forModules: [module]) != .installed {
+            try await AssetInventory.reserve(locale: locale)
+            try await AssetInventory.assetInstallationRequest(supporting: [module])?.downloadAndInstall()
+        }
+        let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [module])
+        let (stream, continuation) = AsyncStream<AnalyzerInput>.makeStream()
+        let analyzer = SpeechAnalyzer(modules: [module])
+        try await analyzer.start(inputSequence: stream)
+
+        let file = try AVAudioFile(forReading: url)
+        let rate = file.processingFormat.sampleRate
+        // More than 2 channels needs an explicit layout (discrete channels, like voice processing's).
+        let n = AVAudioChannelCount(max(1, channels))
+        let wide = n <= 2
+            ? AVAudioFormat(standardFormatWithSampleRate: rate, channels: n)!
+            : AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: rate, interleaved: false,
+                            channelLayout: AVAudioChannelLayout(layoutTag: kAudioChannelLayoutTag_DiscreteInOrder | n)!)
+        let mono = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: rate, channels: 1, interleaved: false)!
+        let converter = format.flatMap { $0 == mono ? nil : AVAudioConverter(from: mono, to: $0) }
+        let chunk = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: 2048)!
+        stats.reset()
+        while file.framePosition < file.length {
+            try file.read(into: chunk)
+            guard let src = chunk.floatChannelData?[0], let buf = AVAudioPCMBuffer(pcmFormat: wide, frameCapacity: chunk.frameLength) else { break }
+            buf.frameLength = chunk.frameLength
+            for c in 0..<Int(wide.channelCount) {
+                let dst = buf.floatChannelData![c]
+                for i in 0..<Int(chunk.frameLength) { dst[i] = c == 0 ? src[i] : 0 }
+            }
+            let voice = Self.firstChannel(buf, as: mono)
+            let out = voice.flatMap { Self.resample($0, with: converter, to: format) }
+            stats.record(level: voice.flatMap(Self.rms), converted: out != nil)
+            if let out { continuation.yield(AnalyzerInput(buffer: out)) }
+        }
+        continuation.finish()
+        try await analyzer.finalizeAndFinishThroughEndOfInput()
+        await results?.value
+        results = nil
+        return heard
+    }
+
     /// Stops the microphone and returns what was heard.
     func stop() async -> Heard {
         try? await Task.sleep(for: tail)
@@ -270,7 +321,7 @@ final class SpeechEngine {
         analyzer = nil
         results = nil
         let h = heard
-        Log.speech.notice("mic \(self.micDescription, privacy: .public): \(self.stats.buffers) buffers, peak level \(String(format: "%.2f", self.stats.maxLevel), privacy: .public); heard \(h.text.count) chars, confidence \(h.confidence.map { String(format: "%.2f", $0) } ?? "n/a", privacy: .public)")
+        Log.speech.notice("mic \(self.micDescription, privacy: .public): \(self.stats.buffers) buffers (\(self.stats.converted) converted), peak level \(String(format: "%.2f", self.stats.maxLevel), privacy: .public); heard \(h.text.count) chars, confidence \(h.confidence.map { String(format: "%.2f", $0) } ?? "n/a", privacy: .public)")
         return h
     }
 
@@ -309,6 +360,24 @@ final class SpeechEngine {
             weight += n
         }
         return weight > 0 ? total / weight : nil
+    }
+
+    /// The first channel as a mono Float32 buffer (the buffer itself when it already is one).
+    nonisolated static func firstChannel(_ buffer: AVAudioPCMBuffer, as mono: AVAudioFormat) -> AVAudioPCMBuffer? {
+        let f = buffer.format
+        if f.channelCount == 1, f.commonFormat == .pcmFormatFloat32, !f.isInterleaved { return buffer }
+        guard let src = buffer.floatChannelData?[0], buffer.frameLength > 0,
+            let out = AVAudioPCMBuffer(pcmFormat: mono, frameCapacity: buffer.frameLength), let dst = out.floatChannelData?[0]
+        else { return nil }
+        let stride = f.isInterleaved ? Int(f.channelCount) : 1
+        for i in 0..<Int(buffer.frameLength) { dst[i] = src[i * stride] }
+        out.frameLength = buffer.frameLength
+        return out
+    }
+
+    nonisolated static func resample(_ buffer: AVAudioPCMBuffer, with converter: AVAudioConverter?, to format: AVAudioFormat?) -> AVAudioPCMBuffer? {
+        guard let converter, let format else { return buffer }
+        return convert(buffer, with: converter, to: format)
     }
 
     nonisolated private static func convert(_ buffer: AVAudioPCMBuffer, with converter: AVAudioConverter, to format: AVAudioFormat) -> AVAudioPCMBuffer? {

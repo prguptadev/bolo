@@ -92,6 +92,21 @@ if let path = value(after: "--batch") {
     print("Sent to Bolo: \(text)\(args.contains("--dry-run") ? " (dry run)" : ""). Watch the notch, or:")
     print("  log show --last 1m --predicate 'subsystem == \"dev.prgupta.bolo\"' --style compact")
     exit(0)
+} else if let path = value(after: "--listen-file") {
+    // Mic-free check of the audio path: Bolo --listen-file eval/recordings/p06.wav [--channels 7]
+    Task { @MainActor in
+        let engine = SpeechEngine(settings: Settings.load())
+        let channels = value(after: "--channels").flatMap(Int.init) ?? 1
+        do {
+            let heard = try await engine.transcribe(file: URL(fileURLWithPath: path), channels: channels)
+            print("\(channels) ch: \(engine.stats.buffers) buffers, \(engine.stats.converted) converted → \"\(heard.text)\" (confidence \(heard.confidence.map { String(format: "%.2f", $0) } ?? "n/a"))")
+            exit(heard.text.isEmpty ? 1 : 0)
+        } catch {
+            print("✗ \(error.localizedDescription)")
+            exit(1)
+        }
+    }
+    RunLoop.main.run()
 } else if args.contains("--listen") {
     // Speak into the Mac and watch the live transcript, then see what Bolo would do. Nothing runs.
     //   Bolo --listen [seconds] [--no-noise]
@@ -117,7 +132,7 @@ if let path = value(after: "--batch") {
         try? await Task.sleep(for: .seconds(seconds))
         let heard = await engine.stop()
         print("\n")
-        print("Mic:          \(engine.micDescription), \(engine.stats.buffers) buffers, peak level \(String(format: "%.2f", engine.stats.maxLevel))")
+        print("Mic:          \(engine.micDescription), \(engine.stats.buffers) buffers (\(engine.stats.converted) reached the speech engine), peak level \(String(format: "%.2f", engine.stats.maxLevel))")
         print("Heard:        \(heard.text.isEmpty ? "(nothing)" : heard.text)")
         print("Confidence:   \(heard.confidence.map { String(format: "%.2f", $0) } ?? "n/a")")
         for (i, alt) in heard.alternatives.prefix(3).enumerated() { print("Alternative \(i + 1): \(alt)") }

@@ -37,6 +37,7 @@ public enum HearingFixes {
         ("^joining\\b(?=.*\\bmeeting\\b)", "join"),
         // "yaad dilana" split up ("Ya De Lana"), "baje" as "baji", and Hindi hour words before "baje"
         ("\\bya(?:ad|d)?\\s+de\\s+lana\\b", "yaad dilana"),
+        ("\\bbaj(?:i|e)ya\\s+de\\s+lana\\b", "baje yaad dilana"),   // "Bajiya De Lana"
         ("\\bbaji\\b", "baje"),
         ("\\b(?:ek)\\s+(?=baje\\b)", "1 "), ("\\b(?:teen)\\s+(?=baje\\b)", "3 "), ("\\b(?:char|chaar)\\s+(?=baje\\b)", "4 "),
         ("\\b(?:paanch|panch)\\s+(?=baje\\b)", "5 "), ("\\b(?:che|chhe|chhah|chheh)\\s+(?=baje\\b)", "6 "),
