@@ -9,3 +9,4 @@ eval/recordings/
 eval/SpeechEval/.build/
 eval/SpeechEval/.swiftpm/
 __pycache__/
+*.profraw
