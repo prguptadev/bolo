@@ -102,9 +102,13 @@ actor QwenPlanner {
         - setVolume: number | mute | unmute | lockScreen | joinNextMeeting | runShortcut: text
         - On-screen: click: target (the button, row, tab or link label) | menu: target ("File > Export as PDF")
           | typeInto: target (the field), text | scroll: text (up, down, top, bottom) | pressKey: text ("cmd+s", "return") | goBack
+        - calculate: text (just the arithmetic, like "5+5" or "18% of 2300"): Bolo shows the answer
         Rules:
         - Copy the contact and the message text exactly from the user's words. Never invent or rephrase them.
-        - Hinglish: "X ko ... karo / bhejo / bolo / bol do" = sendMessage to X; "likho" = draftMessage; "yaad dilana" = addReminder; "kholo" = openApp.
+        - "send / message / tell / text" = sendMessage. "write / type / draft a message" = draftMessage (typed, not sent).
+        - "open WhatsApp and type <name>, <text>" = draftMessage to <name>. Never use typeText for a message in a chat app;
+          if no person is named, reply {"steps": []}.
+        - Hinglish: "X ko ... karo / bhejo / bolo / bol do / batao" = sendMessage to X; "likho" = draftMessage; "yaad dilana" = addReminder; "kholo" = openApp.
         - One step per thing asked. If the user isn't asking the Mac to do anything, reply {"steps": []}.
         Examples:
         "bhai ko WhatsApp karo I'll be late" -> {"steps":[{"action":"sendMessage","contact":"bhai","channel":"whatsapp","text":"I'll be late"}]}

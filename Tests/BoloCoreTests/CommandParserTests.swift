@@ -295,6 +295,56 @@ private func one(_ s: String) -> Step? {
         #expect(forget?.text == "pay the electricity bill")
     }
 
+    @Test func yourWhatsAppSentences() {
+        // Exactly what Bolo heard on 2026-09-22.
+        let a = parser.parse(candidates: ["Open WhatsApp and send message to  Aku.  I hate  you."])?.command
+        #expect(a?.steps == [Step(.sendMessage, contact: "Aku", channel: .whatsapp, text: "I hate you")])
+        let b = parser.parse(candidates: ["Now, can  you write a message to  Aku  on WhatsApp?  I love  you."])?.command
+        #expect(b?.steps == [Step(.draftMessage, contact: "Aku", channel: .whatsapp, text: "I love you")])
+        #expect(parser.parse(candidates: ["Can  you  open WhatsApp?"])?.command.steps == [Step(.openApp, app: "WhatsApp")])
+    }
+
+    @Test func fullStopBeforeACommandStillSplits() {
+        #expect(parser.parse("Open notes. Remind me at 5 pm to call bhai")?.steps.map(\.action) == [.openApp, .addReminder])
+    }
+
+    @Test func sameNameDifferentSpelling() {
+        #expect(Fuzzy.soundKey("Aku") == Fuzzy.soundKey("akku"))
+        #expect(Fuzzy.soundKey("AAKU") == Fuzzy.soundKey("akku"))
+        #expect(Fuzzy.soundKey("Vasu") == Fuzzy.soundKey("vashu"))
+        #expect(Fuzzy.soundKey("Bhavya") == Fuzzy.soundKey("Bavya"))
+        #expect(Fuzzy.soundKey("mom") != Fuzzy.soundKey("tom"))
+        #expect(Fuzzy.soundKey("Priya") != Fuzzy.soundKey("Piya"))
+    }
+
+    @Test func liveTestSentences() {
+        let orCorrection = parser.parse(candidates: ["Open WhatsApp and send message to  Vasu or  send message to  Akku, bye-bye."])?.command
+        #expect(orCorrection?.steps == [Step(.sendMessage, contact: "Akku", channel: .whatsapp, text: "bye-bye")])
+        let twice = parser.parse(candidates: ["Open WhatsApp and send message to  AAKU  Aku,  bye-bye."])?.command
+        #expect(twice?.steps == [Step(.sendMessage, contact: "AAKU", channel: .whatsapp, text: "bye-bye")])
+        let calc = parser.parse(candidates: ["Open calculator and add 5+5"])?.command
+        #expect(calc?.steps == [Step(.openApp, app: "Calculator"), Step(.calculate, text: "5+5")])
+        #expect(parser.parse(candidates: ["Can you open calculator and give me sum of 5+5?"])?.command.steps.last == Step(.calculate, text: "5+5"))
+    }
+
+    @Test func typingAfterOpeningAChatAppIsAMessage() {
+        let p = CommandParser(knownNames: ["prashant gupta", "prashant", "akku"], knownApps: ["whatsapp", "microsoft teams"])
+        let c = p.parse(candidates: ["Open WhatsApp and type Prashant Gupta, bye-bye."])?.command
+        #expect(c?.steps == [Step(.draftMessage, contact: "Prashant Gupta", channel: .whatsapp, text: "bye-bye")])
+        // Unknown first words: don't guess a recipient, and don't type into the open chat either.
+        #expect(p.parse(candidates: ["Open WhatsApp and type see you tomorrow"]) == nil)
+    }
+
+    @Test func arithmetic() {
+        #expect(Arithmetic.evaluate("5+5") == 10)
+        #expect(Arithmetic.evaluate("12 times 7") == 84)
+        #expect(Arithmetic.evaluate("18% of 2300") == 414)
+        #expect(Arithmetic.evaluate("7 divided by 2") == 3.5)
+        #expect(Arithmetic.evaluate("(5)(5)") == nil)     // would crash NSExpression; rejected
+        #expect(Arithmetic.evaluate("rm -rf") == nil)
+        #expect(Arithmetic.format(10) == "10")
+    }
+
     @Test func bajiyaDeLana() {
         let s = first("Mujhe, Che, Bajiya, De Lana, Ki, Jim,  Jana Hai.")
         #expect(s?.action == .addReminder)

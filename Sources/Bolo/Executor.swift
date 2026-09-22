@@ -7,6 +7,13 @@ final class Executor {
     let contacts: ContactBook
     var installedApps: [String: URL]
     var isCancelled: () -> Bool = { false }
+    /// The app you were in when you started talking.
+    var frontAtStart: String?
+
+    private static let chatApps: Set<String> = [
+        "net.whatsapp.WhatsApp", "com.microsoft.teams2", "com.tinyspeck.slackmacgap", "com.apple.MobileSMS",
+        "com.apple.mail", "com.microsoft.Outlook",
+    ]
 
     init(settings: Settings, contacts: ContactBook) {
         self.settings = settings
@@ -22,10 +29,15 @@ final class Executor {
         let messaging = Messaging(settings: settings, isCancelled: isCancelled)
         switch step.action {
         case .sendMessage, .draftMessage:
-            let send = step.action == .sendMessage
+            var send = step.action == .sendMessage
             let text = step.text ?? ""
             do {
                 let person = try contacts.resolve(step.contact ?? "")
+                // "Vasu" heard, "Vashu" in Contacts: probably right, but only a draft until you check.
+                if person.matchedBySpelling, send {
+                    send = false
+                    Log.agent.notice("\(step.contact ?? "", privacy: .public) matched \(person.displayName, privacy: .public) by spelling: draft, not send")
+                }
                 let channel = step.channel ?? person.channel ?? .whatsapp
                 // No number/email for this app (or it's Slack): find the chat by name inside the app.
                 if (channel == .whatsapp && person.phone == nil) || (channel == .teams && person.email == nil) || channel == .slack {
@@ -53,6 +65,11 @@ final class Executor {
         case .joinNextMeeting:
             return try await Everyday.joinNextMeeting()
         case .typeText:
+            // Typing into a chat app goes to whichever conversation is open. Only do that when you were
+            // already looking at it, not in an app Bolo just brought up.
+            if let front = MacControl.frontmostBundleID(), Self.chatApps.contains(front), front != frontAtStart {
+                throw SkillError.failed("I won't type into whichever chat is open. Say who it's for, like \"message Prashant on WhatsApp bye-bye\".")
+            }
             await MacControl.paste(step.text ?? "")
             return "Typed it"
         case .setVolume:
@@ -77,6 +94,17 @@ final class Executor {
             return try ScreenControl.pressKey(step.text ?? "")
         case .goBack:
             return try ScreenControl.goBack()
+        case .calculate:
+            let spoken = step.text ?? ""
+            guard let value = Arithmetic.evaluate(spoken), let expression = Arithmetic.expression(spoken) else {
+                throw SkillError.failed("Couldn't work out \"\(spoken)\".")
+            }
+            // "open calculator and add 5+5": show it in Calculator too.
+            if MacControl.frontmostBundleID() == "com.apple.calculator" {
+                _ = try? ScreenControl.pressKey("escape")
+                MacControl.typeCharacters(expression.replacingOccurrences(of: "(", with: "").replacingOccurrences(of: ")", with: "") + "=")
+            }
+            return "\(expression) = \(Arithmetic.format(value))"
         }
     }
 }

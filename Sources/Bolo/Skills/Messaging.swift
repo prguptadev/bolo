@@ -37,7 +37,7 @@ struct Messaging {
                     """)
                 return "Sent to \(person.displayName) on iMessage"
             }
-            NSWorkspace.shared.open(URL(string: "imessage://\(encode(handle))")!)
+            if let url = URL(string: "imessage://\(encode(handle))") { NSWorkspace.shared.open(url) }
             if !text.isEmpty {
                 try await Task.sleep(for: .seconds(1.2))
                 await MacControl.paste(text)
@@ -109,7 +109,8 @@ struct Messaging {
     func call(_ person: Person, channel: Channel) async throws -> String {
         guard channel == .teams else { throw SkillError.failed("Calls work on Teams for now.") }
         guard let email = person.email else { throw SkillError.failed("No Teams email for \(person.displayName).") }
-        NSWorkspace.shared.open(URL(string: "msteams:/l/call/0/0?users=\(encode(email))")!)
+        guard let url = URL(string: "msteams:/l/call/0/0?users=\(encode(email))") else { throw SkillError.failed("Bad Teams address for \(person.displayName).") }
+        NSWorkspace.shared.open(url)
         return "Calling \(person.displayName) on Teams"
     }
 
@@ -137,12 +138,14 @@ struct Messaging {
             readable = true
             return Self.same(value, text)
         }
-        Log.skills.notice("\(app, privacy: .public) text box readable=\(readable) matched=\(matched)")
-        if !send { return matched ? "Draft ready in \(app) for \(person.displayName)" : "Opened \(person.displayName)'s \(app) chat" }
-        if readable && !matched {
-            throw SkillError.failed("The \(app) text box doesn't show the message, so I didn't send it.")
+        // The focused element isn't always the message box: look for the text anywhere in the window.
+        let inWindow = matched || ScreenControl.windowTextFields(pid: pid).contains { Self.same($0, text) }
+        Log.skills.notice("\(app, privacy: .public) text box readable=\(readable) matched=\(matched) inWindow=\(inWindow)")
+        if !send { return inWindow ? "Draft ready in \(app) for \(person.displayName)" : "Opened \(person.displayName)'s \(app) chat" }
+        // Never press Return without seeing the exact message: a wrong autonomous send is the worst failure.
+        guard inWindow else {
+            throw SkillError.failed("Typed the message for \(person.displayName) but couldn't confirm it in \(app), so I didn't send. It's a draft.")
         }
-        if !readable { try await Task.sleep(for: .seconds(1.5)) }
 
         try await Task.sleep(for: .seconds(settings.sendDelaySeconds))
         if isCancelled() { return "Cancelled. The draft is still in \(app)." }
@@ -155,6 +158,7 @@ struct Messaging {
             let cleared = try await waitUntil(seconds: 3) { (MacControl.focusedText(pid: pid) ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
             if !cleared { throw SkillError.failed("Pressed send in \(app), but the text is still in the box. Check the chat.") }
         }
+        _ = readable
         return "Sent to \(person.displayName) on \(app)"
     }
 

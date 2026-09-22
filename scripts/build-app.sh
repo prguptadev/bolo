@@ -67,6 +67,15 @@ if [ "${1:-}" = "--install" ]; then
   mkdir -p "$HOME/Applications"
   rm -rf "$HOME/Applications/Bolo.app"
   cp -R "$APP" "$HOME/Applications/Bolo.app"
-  open "$HOME/Applications/Bolo.app"
-  echo "Installed and launched ~/Applications/Bolo.app"
+  # LaunchServices sometimes answers -600 right after a replace: retry until it's running.
+  for _ in 1 2 3 4 5; do
+    open "$HOME/Applications/Bolo.app" 2>/dev/null || true
+    sleep 1
+    pgrep -x Bolo >/dev/null && break
+  done
+  if pgrep -x Bolo >/dev/null; then
+    echo "Installed and launched ~/Applications/Bolo.app"
+  else
+    echo "Installed ~/Applications/Bolo.app, but it didn't start: open it from Finder." >&2
+  fi
 fi

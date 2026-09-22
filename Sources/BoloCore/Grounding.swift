@@ -39,7 +39,7 @@ public enum Grounding {
                 kept.append(step)
             case .newNote, .typeText, .addReminder, .runShortcut:
                 if (step.text ?? "").isEmpty == false, textOK { kept.append(step) }
-            case .webSearch:
+            case .webSearch, .calculate:
                 if let t = step.text, share(of: t, in: u) >= 0.6 { kept.append(step) }
             case .openApp:
                 if let app = step.app, share(of: app, in: u) > 0 || appSpoken(app, in: u) { kept.append(step) }

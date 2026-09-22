@@ -234,7 +234,12 @@ final class SpeechEngine {
         micDescription = "\(Int(micFormat.sampleRate)) Hz, \(micFormat.channelCount) ch, voice processing \(noiseSuppression ? "on" : "off")"
         // Voice processing can hand over 7+ channels (processed voice in the first); the converter
         // can't turn 7 into 1, so take the first channel ourselves, then resample.
-        let mono = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: micFormat.sampleRate, channels: 1, interleaved: false)!
+        // A device mid-switch (AirPods connecting) can report 0 Hz: say so instead of crashing.
+        guard micFormat.sampleRate > 0, micFormat.channelCount > 0,
+            let mono = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: micFormat.sampleRate, channels: 1, interleaved: false)
+        else {
+            throw SpeechError.modelNotReady("The microphone isn't ready (\(Int(micFormat.sampleRate)) Hz). Try again in a second.")
+        }
         let converter = format.flatMap { $0 == mono ? nil : AVAudioConverter(from: mono, to: $0) }
         let levelHandler = onLevel
         let stats = self.stats

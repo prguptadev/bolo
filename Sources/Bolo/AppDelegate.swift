@@ -39,7 +39,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         RemoteControl.listen { [weak self] text, dryRun in
             guard let self else { return }
             Log.agent.notice("remote: \(text, privacy: .public)\(dryRun ? " (dry run)" : "", privacy: .public)")
-            Task { await self.agent.handle(Heard(text: text), act: !dryRun) }
+            Task { await self.agent.handleRemote(text, act: !dryRun) }
         }
     }
 

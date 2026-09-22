@@ -73,6 +73,19 @@ public enum Fuzzy {
         return row[b.count]
     }
 
+    /// How a name sounds, so spellings of the same Indian name compare equal:
+    /// "Akku"/"Aku"/"AAKU" → "aku", "Vashu"/"Vasu" → "vasu", "Bhavya"/"Bavya" → "bavia".
+    public static func soundKey(_ name: String) -> String {
+        var s = name.lowercased().filter { $0.isLetter }
+        for (a, b) in [("sh", "s"), ("ph", "f"), ("bh", "b"), ("kh", "k"), ("gh", "g"), ("dh", "d"), ("th", "t"),
+                       ("jh", "j"), ("ee", "i"), ("oo", "u"), ("w", "v"), ("z", "j"), ("q", "k"), ("y", "i")] {
+            s = s.replacingOccurrences(of: a, with: b)
+        }
+        var out = ""
+        for c in s where c != out.last { out.append(c) }   // aa → a, kk → k
+        return out
+    }
+
     /// The one known name within 1 edit (2 for names of 7+ letters) of `word`, or nil if none or several.
     /// Short names (under 4 letters) must match exactly: "mom" vs "tom" is a different person.
     public static func uniqueClose(_ word: String, in names: [String]) -> String? {

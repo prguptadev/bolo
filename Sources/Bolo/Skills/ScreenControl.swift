@@ -30,7 +30,9 @@ enum ScreenControl {
     static func isEnabled(_ el: AXUIElement) -> Bool { (attr(el, kAXEnabledAttribute) as? Bool) ?? true }
 
     static func frame(_ el: AXUIElement) -> CGRect? {
-        guard let p = attr(el, kAXPositionAttribute), let s = attr(el, kAXSizeAttribute) else { return nil }
+        guard let p = attr(el, kAXPositionAttribute), let s = attr(el, kAXSizeAttribute),
+            CFGetTypeID(p) == AXValueGetTypeID(), CFGetTypeID(s) == AXValueGetTypeID()
+        else { return nil }
         var point = CGPoint.zero, size = CGSize.zero
         guard AXValueGetValue(p as! AXValue, .cgPoint, &point), AXValueGetValue(s as! AXValue, .cgSize, &size) else { return nil }
         return CGRect(origin: point, size: size)
@@ -195,7 +197,9 @@ enum ScreenControl {
             guard isEnabled(item.el) else { throw SkillError.failed("\(item.path.joined(separator: " › ")) is greyed out right now.") }
             if AXUIElementPerformAction(item.el, kAXPressAction as CFString) != .success {
                 // Some apps only accept a press once the menu is open.
-                if let top = children(element(front.element, kAXMenuBarAttribute)!).first(where: { string($0, kAXTitleAttribute) == item.path.first }) {
+                if let bar = element(front.element, kAXMenuBarAttribute),
+                    let top = children(bar).first(where: { string($0, kAXTitleAttribute) == item.path.first })
+                {
                     AXUIElementPerformAction(top, kAXPressAction as CFString)
                     usleep(200_000)
                 }
@@ -314,6 +318,37 @@ enum ScreenControl {
         return try pressKey("cmd+[").replacingOccurrences(of: "Pressed", with: "Went back with")
     }
 
+    /// True when the focused element is a search field (by role, or a text field whose placeholder,
+    /// description or title mentions search), not a message box.
+    static func isSearchFocused(pid: pid_t) -> Bool {
+        let app = AXUIElementCreateApplication(pid)
+        AXUIElementSetMessagingTimeout(app, 1.0)
+        guard let el = element(app, kAXFocusedUIElementAttribute) else { return false }
+        let r = role(el)
+        if r == "AXSearchField" { return true }
+        guard fieldRoles.contains(r) else { return false }
+        let words = [kAXPlaceholderValueAttribute, kAXDescriptionAttribute, kAXTitleAttribute, kAXHelpAttribute, kAXIdentifierAttribute]
+            .compactMap { string(el, $0)?.lowercased() }.joined(separator: " ")
+        return words.contains("search") || words.contains("find") || words.contains("jump to")
+    }
+
+    /// Values of every text field in an app's front window (to confirm a draft before sending).
+    static func windowTextFields(pid: pid_t) -> [String] {
+        let app = AXUIElementCreateApplication(pid)
+        AXUIElementSetMessagingTimeout(app, 1.0)
+        guard let window = element(app, kAXFocusedWindowAttribute) ?? (attr(app, kAXWindowsAttribute) as? [AXUIElement])?.first else { return [] }
+        var out: [String] = []
+        var visited = 0
+        func walk(_ el: AXUIElement, _ depth: Int) {
+            guard visited < 4000, depth < 50 else { return }
+            visited += 1
+            if fieldRoles.contains(role(el)), let v = attr(el, kAXValueAttribute) as? String, !v.isEmpty { out.append(v) }
+            for c in children(el) { walk(c, depth + 1) }
+        }
+        walk(window, 0)
+        return out
+    }
+
     // MARK: - Chats by name (groups, or people without a saved number)
 
     /// Searches an app's chat list for exactly `name` and opens it. `searchKey` focuses the search
@@ -321,6 +356,11 @@ enum ScreenControl {
     static func openChat(named name: String, pid: pid_t, appName: String, searchKey: String) async throws -> String {
         _ = try pressKey(searchKey)
         try await Task.sleep(for: .milliseconds(400))
+        // Only type the name if a search box really has focus: otherwise ⌘A + paste would land in the
+        // open chat's message box.
+        guard isSearchFocused(pid: pid) else {
+            throw SkillError.failed("Couldn't open \(appName)'s chat search, so I didn't type anything.")
+        }
         _ = try pressKey("cmd+a")
         await MacControl.paste(name)
         try await Task.sleep(for: .milliseconds(1200))

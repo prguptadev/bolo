@@ -30,6 +30,21 @@ enum MacControl {
         if let saved { board.setString(saved, forType: .string) }
     }
 
+    /// Types characters as keystrokes (for apps that don't take paste, like Calculator).
+    static func typeCharacters(_ text: String) {
+        let source = CGEventSource(stateID: .hidSystemState)
+        for ch in text {
+            var units = Array(String(ch).utf16)
+            let down = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true)
+            let up = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false)
+            down?.keyboardSetUnicodeString(stringLength: units.count, unicodeString: &units)
+            up?.keyboardSetUnicodeString(stringLength: units.count, unicodeString: &units)
+            down?.post(tap: .cghidEventTap)
+            up?.post(tap: .cghidEventTap)
+            usleep(12_000)
+        }
+    }
+
     static var isTrusted: Bool { AXIsProcessTrusted() }
 
     /// The text in the focused field of an app. `nil` means the app doesn't expose it.
@@ -37,7 +52,7 @@ enum MacControl {
         let app = AXUIElementCreateApplication(pid)
         var focused: CFTypeRef?
         guard AXUIElementCopyAttributeValue(app, kAXFocusedUIElementAttribute as CFString, &focused) == .success,
-            let focused
+            let focused, CFGetTypeID(focused) == AXUIElementGetTypeID()
         else { return nil }
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(focused as! AXUIElement, kAXValueAttribute as CFString, &value) == .success

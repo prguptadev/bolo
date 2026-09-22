@@ -57,7 +57,8 @@ enum Everyday {
         let q = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
         let url = engine == .youtube
             ? "https://www.youtube.com/results?search_query=\(q)" : "https://www.google.com/search?q=\(q)"
-        NSWorkspace.shared.open(URL(string: url)!)
+        guard let link = URL(string: url) else { throw SkillError.failed("Couldn't search for \(query).") }
+        NSWorkspace.shared.open(link)
         return "Searched \(engine == .youtube ? "YouTube" : "Google") for \(query)"
     }
 

@@ -23,6 +23,7 @@ public enum Action: String, Codable, Sendable, CaseIterable {
     case scroll         // text: up, down, left, right, top, bottom; number: how many pages
     case pressKey       // text: a key combo like "cmd+shift+t" or "return"
     case goBack
+    case calculate      // text: the arithmetic ("5+5", "18% of 2300"); answered in the notch
 
     /// Actions that operate on whatever app is in front.
     public var drivesScreen: Bool { [.click, .menu, .typeInto, .scroll, .pressKey, .goBack].contains(self) }
@@ -113,6 +114,7 @@ public struct Step: Codable, Sendable, Equatable {
         case .scroll: "Scroll \(text ?? "down")"
         case .pressKey: "Press \(text ?? "")"
         case .goBack: "Go back"
+        case .calculate: "Calculate \(text ?? "")"
         }
     }
 }

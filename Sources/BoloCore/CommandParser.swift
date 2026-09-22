@@ -45,18 +45,49 @@ public struct CommandParser: Sendable {
 
         // A clause that doesn't parse on its own is glued back onto the previous one:
         // "tell bhai I'll be late and call you later" is one message, not two commands.
-        var groups: [String] = []
+        var groups: [(connector: String, text: String)] = []
         for (connector, clause) in Self.splitClauses(cleaned) {
             if let last = groups.last, parseClause(clause) == nil {
-                groups[groups.count - 1] = last + " " + connector + " " + clause
+                groups[groups.count - 1].text = last.text + " " + connector + " " + clause
             } else {
-                groups.append(clause)
+                groups.append((connector, clause))
             }
         }
         var steps: [Step] = []
         var texts: [String] = []
-        for group in groups {
-            guard let step = parseClause(group) else { return nil }
+        for (connector, group) in groups {
+            guard var step = parseClause(group) else { return nil }
+            let isMessage = [.sendMessage, .draftMessage, .call].contains(step.action)
+            // "open WhatsApp and type Prashant Gupta, bye-bye": typing right after opening a chat app is a
+            // message to someone, never typing into whichever chat happens to be open.
+            if step.action == .typeText, let last = steps.last, last.action == .openApp,
+                let ch = last.app.flatMap(Self.channel(forApp:))
+            {
+                let (who, msg) = splitWho(step.text ?? "")
+                let known = knownNames.contains(who.lowercased())
+                guard known || knownNames.isEmpty, !msg.isEmpty, let message = messageStep(who: who, msg: msg, ch: ch.rawValue, send: false)
+                else { return nil }  // not sure who it's for: let the model reason about it, or ask
+                step = message
+                steps.removeLast()
+                texts.removeLast()
+            }
+            // "open WhatsApp and send message to Aku …": the app only says where the message goes.
+            if isMessage, step.channel == nil, let last = steps.last, last.action == .openApp,
+                let ch = last.app.flatMap(Self.channel(forApp:))
+            {
+                step.channel = ch
+                steps.removeLast()
+                texts.removeLast()
+            }
+            // "send message to Vasu or send message to Akku": "or" between two of the same is a correction.
+            let messages: Set<Action> = [.sendMessage, .draftMessage]
+            if connector.lowercased() == "or", let last = steps.last,
+                last.action == step.action || (messages.contains(last.action) && messages.contains(step.action))
+            {
+                if step.channel == nil { step.channel = last.channel }
+                steps.removeLast()
+                texts.removeLast()
+            }
             // "tell bhai to click the link and press submit": a screen action right after a message is
             // part of the message, never a separate click.
             if step.action.drivesScreen, let last = steps.last, last.action == .sendMessage || last.action == .draftMessage,
@@ -84,7 +115,10 @@ public struct CommandParser: Sendable {
             of: ",\\s+(?=(?:remind me|open |launch |search |google |join |new note|set a reminder|lock |mute|volume |run ))",
             with: " and ", options: [.regularExpression, .caseInsensitive])
         t = t.replacingOccurrences(of: "[,;]", with: " ", options: .regularExpression)
-        t = t.replacingOccurrences(of: "[.!?]+\\s+(?=\\S)", with: " and ", options: .regularExpression)
+        // A full stop only separates two commands when a command follows; otherwise it's just a pause
+        // ("send message to Aku. I hate you" is one message).
+        t = t.replacingOccurrences(of: "[.!?]+\\s+(?=" + clauseStart + "\\b)", with: " and ", options: [.regularExpression, .caseInsensitive])
+        t = t.replacingOccurrences(of: "[.!?]+\\s+(?=\\S)", with: " ", options: .regularExpression)
         t = t.replacingOccurrences(of: "[.!?]+$", with: "", options: .regularExpression)
         // "github dot com" -> "github.com"
         t = t.replacingOccurrences(
@@ -93,7 +127,7 @@ public struct CommandParser: Sendable {
         t = t.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
             .trimmingCharacters(in: .whitespaces)
         t = t.replacingOccurrences(
-            of: "^(?:(?:hey|ok|okay)\\s+)?(?:bolo\\s+)?(?:(?:please|can you|could you|will you|kindly)\\s+)?",
+            of: "^(?:(?:hey|ok|okay|now|so|alright|and|bolo)\\s+)*(?:(?:please|can you|could you|will you|would you|kindly)\\s+)*",
             with: "", options: [.regularExpression, .caseInsensitive])
         t = t.replacingOccurrences(of: "\\s+please$", with: "", options: [.regularExpression, .caseInsensitive])
         return t.trimmingCharacters(in: .whitespaces)
@@ -104,6 +138,7 @@ public struct CommandParser: Sendable {
         + "search|google|youtube|look up|play|new note|create a note|make a note|add a note|take a note|note|"
         + "join|type|write|call|set volume|volume|mute|unmute|lock|run|go to|visit|"
         + "click|tap|press|hit|select|choose|scroll|go back|copy|paste|undo|redo|save|close|new tab|new window|refresh|menu|"
+        + "give me|calculate|what's|what is|add|solve|"
         + "\\S+ ko (?:whatsapp|teams|message|msg|text|call|bolo|bhejo|batao))"
 
     private static let splitter = try! NSRegularExpression(
@@ -197,7 +232,13 @@ public struct CommandParser: Sendable {
             p.messageStep(who: c["who"], msg: "", ch: c["ch"], send: false)
         },
 
-        // English messaging.
+        // English messaging. "write / type / draft a message" = draft; "send / message / tell" = send.
+        Pattern("(?:write|type|draft|compose) (?:a |an )?(?:message|msg|text|note) (?:to |for )(?<who>.+?) on " + chatApp + "(?: " + say + ")? (?<msg>.+)") {
+            p, c in p.messageStep(who: c["who"], msg: c["msg"] ?? "", ch: c["ch"], send: false)
+        },
+        Pattern("(?:write|type|draft|compose) (?:a |an )?(?:message|msg|text) (?:to |for )(?<rest>.+)") { p, c in
+            p.messageStep(rest: c["rest"], ch: nil, send: false)
+        },
         Pattern("(?:send )?(?:a )?(?:message|msg|text) (?:to )?(?<who>.+?) on " + chatApp + "(?: " + say + ")? (?<msg>.+)") {
             p, c in p.messageStep(who: c["who"], msg: c["msg"] ?? "", ch: c["ch"], send: true)
         },
@@ -227,6 +268,17 @@ public struct CommandParser: Sendable {
             p, c in
             let verb = c["verb"]?.lowercased() ?? ""
             return p.messageStep(who: c["who"], msg: c["msg"] ?? "", ch: c["ch"], send: !verb.hasPrefix("likh"))
+        },
+
+        // Arithmetic, answered in the notch: "5+5", "sum of 5+5", "what's 18% of 2300", "12 times 7 kitna hai"
+        Pattern("(?:add|do|type|enter|put|calculate|compute|solve)(?: in)? (?<expr>[-+*/x×÷().%\\d ]+[-+*/x×÷][-+*/x×÷().%\\d ]+)") { _, c in
+            c["expr"].flatMap { Arithmetic.expression($0) != nil ? Step(.calculate, text: $0.trimmingCharacters(in: .whitespaces)) : nil }
+        },
+        Pattern("(?:give me |tell me |what(?:'s| is) |calculate |compute )?(?:the )?(?:sum|total|answer|result|value) of (?<expr>.+?)(?: please)?") { _, c in
+            c["expr"].flatMap { Arithmetic.expression($0) != nil ? Step(.calculate, text: $0) : nil }
+        },
+        Pattern("(?:what(?:'s| is)|calculate|compute|how much is)? ?(?<expr>[-+*/x×÷().%\\d ]+(?:(?: plus| minus| times| into| multiplied by| divided by| over| percent of) [-+*/().%\\d ]+)*)(?: kitna (?:hai|hota hai|hua))?") { _, c in
+            c["expr"].flatMap { Arithmetic.expression($0) != nil ? Step(.calculate, text: $0.trimmingCharacters(in: .whitespaces)) : nil }
         },
 
         // Notes.
@@ -403,9 +455,27 @@ public struct CommandParser: Sendable {
     func messageStep(who: String?, msg: String, ch: String?, send: Bool) -> Step? {
         guard let who = Self.cleanWho(who) else { return nil }
         let channel = ch.flatMap(Channel.from(spoken:))
-        let text = msg.trimmingCharacters(in: .whitespaces)
+        var text = msg.trimmingCharacters(in: .whitespaces)
+        // The recognizer sometimes hears the name twice: "to AAKU Aku, bye-bye" → "bye-bye".
+        let words = text.split(separator: " ", maxSplits: 1).map(String.init)
+        if words.count == 2, let first = words.first?.lowercased(), let name = who.split(separator: " ").last?.lowercased(),
+            first == name || (first.count >= 3 && Fuzzy.distance(first, name) <= 1)
+        {
+            text = words[1]
+        }
         if text.isEmpty { return Step(.draftMessage, contact: who, channel: channel) }
         return Step(send ? .sendMessage : .draftMessage, contact: who, channel: channel, text: text)
+    }
+
+    static func channel(forApp app: String) -> Channel? {
+        switch app.lowercased() {
+        case "whatsapp": .whatsapp
+        case "microsoft teams", "teams": .teams
+        case "slack": .slack
+        case "messages": .imessage
+        case "mail", "microsoft outlook": .mail
+        default: nil
+        }
     }
 
     func appStep(_ spoken: String?) -> Step? {

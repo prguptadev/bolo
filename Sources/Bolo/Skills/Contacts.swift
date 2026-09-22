@@ -7,6 +7,8 @@ struct Person {
     var phone: String?
     var email: String?
     var channel: Channel?
+    /// The name was matched by spelling ("Vasu" → "Vashu"), not exactly.
+    var matchedBySpelling = false
 }
 
 enum ResolveError: LocalizedError {
@@ -90,13 +92,24 @@ final class ContactBook: @unchecked Sendable {
         let pool = exact.isEmpty ? entries.filter { $0.full.lowercased().hasPrefix(who + " ") } : exact
         let byName = Dictionary(grouping: pool, by: { $0.full.lowercased() })
         guard let first = pool.first else {
-            // Misheard by one letter ("pria")? Only if exactly one known name is that close.
             let known = Array(nicknames.keys) + entries.flatMap { [$0.nickname, $0.given, $0.full] }.filter { !$0.isEmpty }
+            // Same name, different spelling ("Aku" = "Akku", "Vasu" = "Vashu"): the same person, if only one sounds like it.
+            let key = Fuzzy.soundKey(who)
+            let soundsSame = Set(known.filter { Fuzzy.soundKey($0) == key }.map { $0.lowercased() })
+            if soundsSame.count == 1, let name = soundsSame.first, name != who {
+                lock.unlock()
+                defer { lock.lock() }
+                Log.agent.notice("contact \(spoken, privacy: .public) sounds like \(name, privacy: .public)")
+                return try resolve(name)
+            }
+            // Misheard by one letter ("pria")? Only if exactly one known name is that close.
             if let close = Fuzzy.uniqueClose(who, in: known), close != who {
                 lock.unlock()
                 defer { lock.lock() }
                 Log.agent.notice("contact \(spoken, privacy: .public) matched \(close, privacy: .public) by spelling")
-                return try resolve(close)
+                var person = try resolve(close)
+                person.matchedBySpelling = true
+                return person
             }
             throw ResolveError.unknown(spoken)
         }

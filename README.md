@@ -87,7 +87,11 @@ Bolo acts without asking, so it's built not to act on things you didn't say:
   Priya. The guard rejects that.)
 - Before pressing send in WhatsApp or Teams, Bolo checks the chat's text box holds exactly your
   message. If the app doesn't show it, Bolo leaves the draft and tells you.
-- Two people matching the same name is an error, never a guess.
+- Two people matching the same name is an error, never a guess. Spellings of the same name
+  ("Aku"/"Akku", "Vasu"/"Vashu") count as that person; a name that's only close becomes a draft.
+- Bolo never types into whichever chat happens to be open: "open WhatsApp and type Prashant, bye-bye"
+  is a draft to Prashant, and plain typing into a chat app only works if you were already in it.
+- Before searching an app's chats by name, Bolo checks the search box really has focus.
 - `Esc` stops a running command. There's a 0.8 s pause before sending (`sendDelaySeconds` in
   Settings); set it to `0` for none.
 - There are no skills for payments, passwords or system security settings.

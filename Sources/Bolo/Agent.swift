@@ -30,7 +30,12 @@ final class Agent: ObservableObject {
     private let planner = try? ModelPlanner()
     private let qwen: QwenPlanner
     private var parser = CommandParser()
-    private var cancelled = false
+    /// Read from background tasks (skills' wait loops), so it can't be main-actor state.
+    private let cancelFlag = CancelFlag()
+    private var cancelled: Bool {
+        get { cancelFlag.value }
+        set { cancelFlag.value = newValue }
+    }
     private var usedAlternative = false
     private var hideTask: Task<Void, Never>?
     private var startTask: Task<Void, Never>?
@@ -40,7 +45,8 @@ final class Agent: ObservableObject {
         executor = Executor(settings: settings, contacts: contacts)
         speech = SpeechEngine(settings: settings)
         qwen = QwenPlanner(idleSeconds: settings.brainIdleSeconds)
-        executor.isCancelled = { [weak self] in MainActor.assumeIsolated { self?.cancelled ?? true } }
+        let flag = cancelFlag
+        executor.isCancelled = { flag.value }
         speech.onText = { [weak self] in self?.transcript = $0 }
         speech.onLevel = { [weak self] in self?.level = $0 }
         speech.prepare()
@@ -78,6 +84,7 @@ final class Agent: ObservableObject {
         rows = []
         message = nil
         set(.listening)
+        executor.frontAtStart = MacControl.frontmostBundleID()
         // Warm the brain while you talk, in case the phrase rules can't read the sentence.
         if usesQwen { Task { try? await qwen.load() } }
         startTask = Task {
@@ -133,6 +140,11 @@ final class Agent: ObservableObject {
     }
 
     // MARK: Understand and act
+
+    func handleRemote(_ text: String, act: Bool) async {
+        executor.frontAtStart = MacControl.frontmostBundleID()
+        await handle(Heard(text: text), act: act)
+    }
 
     /// `act: false` shows and logs the plan without running it (remote dry runs).
     func handle(_ heard: Heard, act: Bool = true) async {
@@ -236,6 +248,15 @@ final class Agent: ObservableObject {
             guard !Task.isCancelled, phase == .done || phase == .failed else { return }
             set(.idle)
         }
+    }
+}
+
+final class CancelFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _value = false
+    var value: Bool {
+        get { lock.withLock { _value } }
+        set { lock.withLock { _value = newValue } }
     }
 }
 
