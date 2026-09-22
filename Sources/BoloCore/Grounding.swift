@@ -56,6 +56,25 @@ public enum Grounding {
         return Command(utterance: u, steps: unique, source: command.source)
     }
 
+    /// What Apple's on-device model may do on its own. Measured in eval/results/text-2026-09-22.md:
+    /// it turned "jot down call the plumber tomorrow" into a call and "I was thinking about messaging
+    /// bhai later" into typing. So its sends become drafts, and calls, typing and locking are dropped.
+    public static func limitModel(_ command: Command) -> Command? {
+        var steps: [Step] = []
+        for var s in command.steps {
+            switch s.action {
+            case .call, .typeText, .lockScreen:
+                continue
+            case .sendMessage:
+                s.action = .draftMessage
+            default:
+                break
+            }
+            steps.append(s)
+        }
+        return steps.isEmpty ? nil : Command(utterance: command.utterance, steps: steps, source: command.source)
+    }
+
     /// "Microsoft Teams" is fine when the user said "teams".
     private static func appSpoken(_ app: String, in utterance: String) -> Bool {
         let said = utterance.lowercased()

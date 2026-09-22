@@ -18,6 +18,19 @@ public struct CommandParser: Sendable {
         self.knownApps = Set(knownApps.map { $0.lowercased() })
     }
 
+    /// Tries the best transcript, then the speech engine's alternatives, each after `HearingFixes`.
+    /// Returns the first that forms a command and which candidate it was (0 = best).
+    public func parse(candidates: [String]) -> (command: Command, index: Int)? {
+        for (i, raw) in candidates.enumerated() {
+            let fixed = HearingFixes.apply(raw)
+            if var command = parse(fixed) {
+                command.utterance = raw
+                return (command, i)
+            }
+        }
+        return nil
+    }
+
     public func parse(_ utterance: String) -> Command? {
         let cleaned = Self.clean(utterance)
         guard !cleaned.isEmpty else { return nil }

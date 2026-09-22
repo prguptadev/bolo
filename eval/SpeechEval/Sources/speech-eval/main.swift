@@ -3,9 +3,11 @@ import Foundation
 import Speech
 import WhisperKit
 
-// speech-eval apple   <dir of .wav, or one .wav> [--locale en_IN]
-// speech-eval whisper <dir of .wav, or one .wav> [--lang en|hi|auto] [--model large-v3-v20240930_626MB]
-// Prints one JSON line per file: {"id","text","ms"}. First line is {"id":"_load","ms":…} (model load time).
+// speech-eval apple     <dir of .wav, or one .wav> [--locale en_IN]
+// speech-eval dictation <dir|wav> [--locale en_IN|hi_IN] [--lm lm.bin --vocab vocab.bin]   (short-form mode)
+// speech-eval whisper   <dir|wav> [--lang en|hi|auto] [--model large-v3-v20240930_626MB]
+// Prints one JSON line per file: {"id","text","alts","conf","ms"}. First line is {"id":"_load","ms":…}.
+// Hindi (hi_IN) output is transliterated to Latin letters so Bolo's parser can read it.
 
 let args = CommandLine.arguments
 guard args.count >= 3 else {
@@ -24,32 +26,78 @@ let files = (input.pathExtension == "wav" ? [input] : ((try? FileManager.default
     .filter { ((try? AVAudioFile(forReading: $0).length) ?? 0) > 1600 }  // skip empty/<0.1 s files (the analyzer never finishes on them)
     .sorted { $0.lastPathComponent < $1.lastPathComponent }
 
-func emit(_ id: String, _ text: String?, _ ms: Double) {
+func emit(_ id: String, _ text: String?, _ ms: Double, alts: [String] = [], conf: Double? = nil) {
     var row: [String: Any] = ["id": id, "ms": Int(ms)]
     if let text { row["text"] = text.trimmingCharacters(in: .whitespacesAndNewlines) }
+    if !alts.isEmpty { row["alts"] = alts }
+    if let conf { row["conf"] = (conf * 100).rounded() / 100 }
     let data = try! JSONSerialization.data(withJSONObject: row, options: [.sortedKeys, .withoutEscapingSlashes])
     print(String(data: data, encoding: .utf8)!)
     fflush(stdout)
 }
 
-func appleTranscribe(_ url: URL, locale: Locale) async throws -> String {
-    let transcriber = SpeechTranscriber(locale: locale, preset: .transcription)
-    if let install = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) {
+struct Heard { var text = ""; var alts: [String] = []; var conf: Double? }
+
+func confidence(_ t: AttributedString) -> Double? {
+    var total = 0.0, weight = 0.0
+    for run in t.runs {
+        guard let c = run[AttributeScopes.SpeechAttributes.ConfidenceAttribute.self] else { continue }
+        let n = Double(t[run.range].characters.count)
+        total += c * n
+        weight += n
+    }
+    return weight > 0 ? total / weight : nil
+}
+
+func latin(_ s: String, _ locale: Locale) -> String {
+    guard locale.identifier.hasPrefix("hi") else { return s }
+    return s.applyingTransform(StringTransform(rawValue: "Devanagari-Latin; Latin-ASCII"), reverse: false) ?? s
+}
+
+func run(_ module: any SpeechModule, _ url: URL, collect: Task<Heard, Error>) async throws -> Heard {
+    if let install = try await AssetInventory.assetInstallationRequest(supporting: [module]) {
         try await install.downloadAndInstall()
     }
-    let collect = Task { () -> String in
-        var text = ""
-        for try await r in transcriber.results where r.isFinal { text += String(r.text.characters) }
-        return text
-    }
     let file = try AVAudioFile(forReading: url)
-    let analyzer = SpeechAnalyzer(modules: [transcriber])
+    let analyzer = SpeechAnalyzer(modules: [module])
     if let last = try await analyzer.analyzeSequence(from: file) {
         try await analyzer.finalizeAndFinish(through: last)
     } else {
         await analyzer.cancelAndFinishNow()
     }
     return try await collect.value
+}
+
+func appleTranscribe(_ url: URL, locale: Locale) async throws -> Heard {
+    let t = SpeechTranscriber(locale: locale, transcriptionOptions: [], reportingOptions: [.alternativeTranscriptions], attributeOptions: [.transcriptionConfidence])
+    let collect = Task { () -> Heard in
+        var h = Heard(); var confs: [Double] = []
+        for try await r in t.results where r.isFinal {
+            h.text += String(r.text.characters)
+            h.alts += r.alternatives.map { String($0.characters) }
+            if let c = confidence(r.text) { confs.append(c) }
+        }
+        h.conf = confs.isEmpty ? nil : confs.reduce(0, +) / Double(confs.count)
+        return h
+    }
+    return try await run(t, url, collect: collect)
+}
+
+func dictationTranscribe(_ url: URL, locale: Locale, lm: SFSpeechLanguageModel.Configuration?) async throws -> Heard {
+    var hints: Set<DictationTranscriber.ContentHint> = [.shortForm]
+    if let lm { hints.insert(.customizedLanguage(modelConfiguration: lm)) }
+    let t = DictationTranscriber(locale: locale, contentHints: hints, transcriptionOptions: [], reportingOptions: [.alternativeTranscriptions], attributeOptions: [.transcriptionConfidence])
+    let collect = Task { () -> Heard in
+        var h = Heard(); var confs: [Double] = []
+        for try await r in t.results where r.isFinal {
+            h.text += latin(String(r.text.characters), locale)
+            h.alts += r.alternatives.map { latin(String($0.characters), locale) }
+            if let c = confidence(r.text) { confs.append(c) }
+        }
+        h.conf = confs.isEmpty ? nil : confs.reduce(0, +) / Double(confs.count)
+        return h
+    }
+    return try await run(t, url, collect: collect)
 }
 
 Task {
@@ -60,8 +108,19 @@ Task {
             emit("_load", nil, 0)
             for f in files {
                 let t = Date()
-                let text = try await appleTranscribe(f, locale: locale)
-                emit(f.deletingPathExtension().lastPathComponent, text, Date().timeIntervalSince(t) * 1000)
+                let h = try await appleTranscribe(f, locale: locale)
+                emit(f.deletingPathExtension().lastPathComponent, h.text, Date().timeIntervalSince(t) * 1000, alts: h.alts, conf: h.conf)
+            }
+        case "dictation":
+            let locale = Locale(identifier: option("--locale", "en_IN"))
+            let lmPath = option("--lm", "")
+            let lm = lmPath.isEmpty ? nil : SFSpeechLanguageModel.Configuration(
+                languageModel: URL(fileURLWithPath: lmPath), vocabulary: URL(fileURLWithPath: option("--vocab", "")))
+            emit("_load", nil, 0)
+            for f in files {
+                let t = Date()
+                let h = try await dictationTranscribe(f, locale: locale, lm: lm)
+                emit(f.deletingPathExtension().lastPathComponent, h.text, Date().timeIntervalSince(t) * 1000, alts: h.alts, conf: h.conf)
             }
         case "whisper":
             let lang = option("--lang", "en")

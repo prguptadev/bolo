@@ -62,7 +62,7 @@ public final class ModelPlanner: @unchecked Sendable {
         let response = try await session.respond(to: utterance, schema: schema, options: GenerationOptions(temperature: 0))
         let raw = try JSONDecoder().decode(RawPlan.self, from: Data(response.content.jsonString.utf8))
         let steps = raw.steps.compactMap { $0.step }
-        return Grounding.filter(Command(utterance: utterance, steps: steps, source: .model))
+        return Grounding.filter(Command(utterance: utterance, steps: steps, source: .model)).flatMap(Grounding.limitModel)
     }
 
     private struct RawPlan: Decodable { var steps: [RawStep] }

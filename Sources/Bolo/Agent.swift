@@ -36,7 +36,7 @@ final class Agent: ObservableObject {
     init(settings: Settings) {
         self.settings = settings
         executor = Executor(settings: settings, contacts: contacts)
-        speech = SpeechEngine(localeIdentifier: settings.speechLocale)
+        speech = SpeechEngine(settings: settings)
         executor.isCancelled = { [weak self] in MainActor.assumeIsolated { self?.cancelled ?? true } }
         speech.onText = { [weak self] in self?.transcript = $0 }
         speech.onLevel = { [weak self] in self?.level = $0 }
@@ -48,9 +48,21 @@ final class Agent: ObservableObject {
         await contacts.reload()
         executor.installedApps = Everyday.installedApps()
         let names = contacts.spokenNames
-        parser = CommandParser(knownNames: names, knownApps: Set(executor.installedApps.keys).union(AppNames.aliases.keys))
-        speech.contextualStrings = Array(Set(names.filter { $0.count > 2 }))
+        let apps = Set(executor.installedApps.keys).union(AppNames.aliases.keys)
+        parser = CommandParser(knownNames: names, knownApps: apps)
+        let appNames = executor.installedApps.values.map { $0.deletingPathExtension().lastPathComponent }
+        // Words the speech engine should favour: people, apps, and Hinglish command words.
+        speech.contextualStrings = Array(Set(names.filter { $0.count > 2 } + appNames + Self.commandWords))
+        if settings.customVocabulary, settings.speechEngine == "dictation" {
+            speech.languageModel = await CustomVocabulary.prepare(
+                locale: Locale(identifier: settings.speechLocale), names: names, apps: appNames)
+        }
     }
+
+    private static let commandWords = [
+        "WhatsApp", "Teams", "iMessage", "karo", "bhejo", "kholo", "likho", "bol do", "bolo", "yaad dilana",
+        "bhai", "mummy", "papa", "remind me", "new note", "join my next meeting",
+    ]
 
     // MARK: Key events
 
@@ -76,13 +88,13 @@ final class Agent: ObservableObject {
         guard phase == .listening else { return }
         Task {
             await startTask?.value
-            let text = await speech.stop()
-            transcript = text
-            guard !text.isEmpty else {
+            let heard = await speech.stop()
+            transcript = heard.text
+            guard !heard.text.isEmpty else {
                 set(.idle)
                 return
             }
-            await handle(text)
+            await handle(heard)
         }
     }
 
@@ -109,17 +121,29 @@ final class Agent: ObservableObject {
 
     // MARK: Understand and act
 
-    /// Also used by the command line (`--say`), so behaviour matches the voice path exactly.
-    func handle(_ text: String) async {
+    func handle(_ heard: Heard) async {
+        let text = heard.text
         lastUtterance = text
         transcript = text
         set(.working)
-        Log.agent.info("heard: \(text, privacy: .public)")
-        guard let command = await understand(text) else {
+        let conf = heard.confidence.map { String(format: "%.2f", $0) } ?? "n/a"
+        Log.agent.info("heard: \(text, privacy: .public) (confidence \(conf, privacy: .public), \(heard.alternatives.count) alternatives)")
+        guard var command = await understand(heard) else {
             Log.agent.info("not understood")
             fail("Didn't catch a command. Try \"open Notes\" or \"bhai ko WhatsApp karo …\".")
             History.append(utterance: text, command: nil, results: [])
             return
+        }
+        // Heard unclearly: type messages as drafts rather than sending misheard words.
+        if let c = heard.confidence, c < settings.minSendConfidence, command.steps.contains(where: { $0.action == .sendMessage || $0.action == .call }) {
+            command.steps = command.steps.compactMap { s in
+                var s = s
+                if s.action == .call { return nil }
+                if s.action == .sendMessage { s.action = .draftMessage }
+                return s
+            }
+            message = "Heard it unclearly, so the message is a draft, not sent."
+            Log.agent.info("low confidence \(conf, privacy: .public): sends downgraded to drafts")
         }
         Log.agent.info("\(command.source.rawValue, privacy: .public): \(command.steps.map(\.summary).joined(separator: " | "), privacy: .public)")
         rows = command.steps.map { Row(text: $0.summary, status: .pending) }
@@ -153,12 +177,15 @@ final class Agent: ObservableObject {
         scheduleHide(after: 2.5)
     }
 
-    func understand(_ text: String) async -> Command? {
-        if let command = parser.parse(text) { return command }
+    func understand(_ heard: Heard) async -> Command? {
+        if let (command, index) = parser.parse(candidates: heard.candidates) {
+            if index > 0 { Log.agent.info("used alternative #\(index): \(command.utterance, privacy: .public)") }
+            return command
+        }
         guard settings.useModelFallback, let planner else { return nil }
         message = "Thinking…"
         defer { message = nil }
-        return try? await planner.plan(text)
+        return try? await planner.plan(HearingFixes.apply(heard.text))
     }
 
     // MARK: State

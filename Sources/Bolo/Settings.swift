@@ -8,8 +8,36 @@ struct Settings: Codable {
     var defaultCountryCode: String = "91"
     /// Speech recognition locale. English (India) is installed on-device by macOS.
     var speechLocale: String = "en_IN"
-    /// Use Apple's on-device model when the phrase patterns don't match.
+    /// "dictation": Apple's dictation model in short-command mode, with Bolo's custom vocabulary and
+    /// alternative guesses. "transcriber": Apple's newer general transcription model.
+    var speechEngine: String = "dictation"
+    /// Apple voice processing on the microphone: noise suppression, echo cancellation, automatic gain.
+    var noiseSuppression: Bool = true
+    /// Teach the dictation model your contact names, app names and Bolo's command phrases.
+    var customVocabulary: Bool = true
+    /// Keep listening this long after the key is released, so the last word isn't cut off.
+    var releaseTailMs: Int = 350
+    /// Below this speech confidence (0–1), messages are typed as drafts instead of sent.
+    var minSendConfidence: Double = 0.45
+    /// Use Apple's on-device model when the phrase patterns don't match (it can't send or call).
     var useModelFallback: Bool = true
+
+    init() {}
+
+    /// Missing keys take their defaults, so older settings files keep working.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = Settings()
+        sendDelaySeconds = try c.decodeIfPresent(Double.self, forKey: .sendDelaySeconds) ?? d.sendDelaySeconds
+        defaultCountryCode = try c.decodeIfPresent(String.self, forKey: .defaultCountryCode) ?? d.defaultCountryCode
+        speechLocale = try c.decodeIfPresent(String.self, forKey: .speechLocale) ?? d.speechLocale
+        speechEngine = try c.decodeIfPresent(String.self, forKey: .speechEngine) ?? d.speechEngine
+        noiseSuppression = try c.decodeIfPresent(Bool.self, forKey: .noiseSuppression) ?? d.noiseSuppression
+        customVocabulary = try c.decodeIfPresent(Bool.self, forKey: .customVocabulary) ?? d.customVocabulary
+        releaseTailMs = try c.decodeIfPresent(Int.self, forKey: .releaseTailMs) ?? d.releaseTailMs
+        minSendConfidence = try c.decodeIfPresent(Double.self, forKey: .minSendConfidence) ?? d.minSendConfidence
+        useModelFallback = try c.decodeIfPresent(Bool.self, forKey: .useModelFallback) ?? d.useModelFallback
+    }
 
     static let folder: URL = {
         let url = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -22,11 +50,16 @@ struct Settings: Codable {
     static let nicknamesURL = folder.appendingPathComponent("nicknames.json")
     static let historyURL = folder.appendingPathComponent("history.jsonl")
 
+    /// Reads the settings file, then writes it back with every key present so new options show up
+    /// for editing. Your existing values are kept.
     static func load() -> Settings {
-        if let data = try? Data(contentsOf: settingsURL), let s = try? JSONDecoder().decode(Settings.self, from: data) {
-            return s
+        var s = Settings()
+        if let data = try? Data(contentsOf: settingsURL) {
+            guard let decoded = try? JSONDecoder().decode(Settings.self, from: data) else {
+                return s  // unreadable (e.g. a typo): use defaults, don't overwrite the user's file
+            }
+            s = decoded
         }
-        let s = Settings()
         let enc = JSONEncoder()
         enc.outputFormatting = [.prettyPrinted, .sortedKeys]
         try? enc.encode(s).write(to: settingsURL)

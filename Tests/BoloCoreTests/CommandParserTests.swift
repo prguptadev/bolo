@@ -194,6 +194,47 @@ private func one(_ s: String) -> Step? {
     }
 }
 
+@Suite struct Hearing {
+    @Test func hinglishMishearingsAreRepaired() {
+        #expect(HearingFixes.apply("Bye ko WhatsApp Carol I'll be late") == "bhai ko WhatsApp karo I'll be late")
+        #expect(HearingFixes.apply("Chrome cholo") == "Chrome kholo")
+        #expect(HearingFixes.apply("mom ko message bejo ki main aa gaya") == "mom ko message bhejo ki main aa gaya")
+        #expect(HearingFixes.apply("mujhe 6 baje yard dilana ki gym jaana hai") == "mujhe 6 baje yaad dilana ki gym jaana hai")
+    }
+
+    @Test func messageTextIsLeftAlone() {
+        // "what's up" and "by" inside a message must survive.
+        let s = "whatsapp bhai saying what's up bro, back by 6"
+        #expect(HearingFixes.apply(s) == s)
+    }
+
+    @Test func alternativesAreTriedInOrder() {
+        let r = parser.parse(candidates: ["by go what's up caro later", "bhai ko whatsapp karo on my way"])
+        #expect(r?.index == 1)
+        #expect(r?.command.steps.first == Step(.sendMessage, contact: "bhai", channel: .whatsapp, text: "on my way"))
+    }
+
+    @Test func fixedBestGuessWinsOverAlternatives() {
+        let r = parser.parse(candidates: ["Bye ko WhatsApp Carol on my way", "buy coffee"])
+        #expect(r?.index == 0)
+        #expect(r?.command.steps.first?.contact == "bhai")
+    }
+
+    @Test func fuzzyNamesOnlyWhenUnique() {
+        #expect(Fuzzy.uniqueClose("pria", in: ["priya", "rahul", "mom"]) == "priya")
+        #expect(Fuzzy.uniqueClose("rahull", in: ["priya", "rahul"]) == "rahul")
+        #expect(Fuzzy.uniqueClose("rahool", in: ["priya", "rahul"]) == nil)    // 2 edits on a short name: too far
+        #expect(Fuzzy.uniqueClose("tom", in: ["mom"]) == nil)            // short names must match exactly
+        #expect(Fuzzy.uniqueClose("amit", in: ["amir", "amita"]) == nil)  // two candidates: no guess
+    }
+
+    @Test func modelMayNotSendCallOrType() {
+        let c = Command(utterance: "jot down call the plumber tomorrow",
+                        steps: [Step(.call, contact: "plumber"), Step(.sendMessage, contact: "bhai", text: "hi")], source: .model)
+        #expect(Grounding.limitModel(c)?.steps == [Step(.draftMessage, contact: "bhai", text: "hi")])
+    }
+}
+
 extension Command: Equatable {
     public static func == (a: Command, b: Command) -> Bool { a.steps == b.steps && a.utterance == b.utterance }
 }
