@@ -18,7 +18,9 @@ applied to files, so real use in a noisy room should do at least as well as thes
 For each: word error rate against the prompt text, speed, and end-to-end accuracy (transcript →
 Bolo's parser + Apple model → right action?).
 
-  uv run eval/stt_eval.py        # downloads the Whisper model (~0.6 GB) once
+  uv run eval/stt_eval.py                       # all engines; downloads Whisper (~0.6 GB) once
+  uv run eval/stt_eval.py --only transcriber    # engines whose name contains this
+  uv run eval/stt_eval.py --rescore             # reuse saved transcripts; re-run only the parser
 """
 
 import json
@@ -48,6 +50,24 @@ def wer(ref, hyp):
     return d[len(h)] / max(1, len(r))
 
 
+SAVED = ROOT / "eval/results/transcripts"
+
+
+def slug(name):
+    return "".join(c if c.isalnum() else "-" for c in name.lower()).strip("-")
+
+
+def transcribe_cached(name, argv, rescore):
+    path = SAVED / f"{slug(name)}.json"
+    if rescore and path.exists():
+        data = json.loads(path.read_text())
+        return {k: tuple(v) for k, v in data["transcripts"].items()}, data["load"]
+    tr, load = transcribe(*argv)
+    SAVED.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"load": load, "transcripts": tr}, ensure_ascii=False, indent=1))
+    return tr, load
+
+
 def transcribe(engine, *extra):
     if not TOOL.exists():
         subprocess.run(["swift", "build", "-c", "release"], cwd=TOOL_DIR, check=True)
@@ -59,10 +79,13 @@ def transcribe(engine, *extra):
 
 def understand(transcripts):
     with tempfile.NamedTemporaryFile("w", suffix=".jsonl", delete=False) as f:
-        for i, (text, _, alts, _) in transcripts.items():
-            f.write(json.dumps({"id": i, "say": text, "alts": alts}) + "\n")
+        for i, (text, _, alts, conf) in transcripts.items():
+            f.write(json.dumps({"id": i, "say": text, "alts": alts, "conf": conf}) + "\n")
     binary = ROOT / ".build/debug/Bolo"
-    out = subprocess.run([str(binary), "--batch", f.name, "--names", NAMES], capture_output=True, text=True, check=True).stdout
+    brain = sys.argv[sys.argv.index("--brain") + 1] if "--brain" in sys.argv else "apple"
+    if brain == "qwen":
+        binary = ROOT / "build/Bolo.app/Contents/MacOS/Bolo"  # Qwen needs the Xcode build (GPU kernels)
+    out = subprocess.run([str(binary), "--batch", f.name, "--names", NAMES, "--brain", brain], capture_output=True, text=True, check=True).stdout
     return {r["id"]: r["steps"] for r in map(json.loads, out.splitlines())}
 
 
@@ -93,26 +116,40 @@ def main():
              "|---|---|---|---|---|---|---|---|"]
     detail = []
     hinglish = {p["id"] for p in prompts if any(w in p["say"].lower().split() for w in ("ko", "kholo", "karo", "mujhe", "aur"))}
+    only = sys.argv[sys.argv.index("--only") + 1].lower() if "--only" in sys.argv else None
+    rescore = "--rescore" in sys.argv
     for name, argv in engines.items():
+        if only and only not in name.lower():
+            continue
+        if rescore and not (SAVED / f"{slug(name)}.json").exists():
+            continue
         print(f"{name} …", file=sys.stderr)
-        tr, load = transcribe(*argv)
+        tr, load = transcribe_cached(name, argv, rescore)
         steps = understand(tr)
         w = [wer(say[i], tr[i][0]) for i in tr]
         wh = [wer(say[i], tr[i][0]) for i in tr if i in hinglish]
         full = unsafe = 0
+        verdict = {}
         for i in tr:
             _, f, u = score(steps.get(i, []), exp[i])
             full += f
             unsafe += u
+            verdict[i] = "**UNSAFE**" if u else ("✓" if f else "✗")
         n = len(tr)
         confs = [c for *_, c in tr.values() if c is not None]
         conf = f"{statistics.mean(confs):.2f}" if confs else "n/a"
         wh_s = f"{100*statistics.mean(wh):.0f}%" if wh else "n/a"
         lines.append(f"| {name} | {100*statistics.mean(w):.0f}% | {wh_s} | {full}/{n} ({100*full//n}%) | {unsafe} | {conf} | "
                      f"{statistics.median(v[1] for v in tr.values()):.0f} ms | {load/1000:.1f} s |")
-        detail += [f"## {name}", ""] + [f"- `{i}` said \"{say[i]}\" → heard \"{tr[i][0]}\"" + (f" (conf {tr[i][3]})" if tr[i][3] is not None else "") for i in sorted(tr)] + [""]
+        detail += [f"## {name}", ""] + [
+            f"- {verdict[i]} `{i}` said \"{say[i]}\" → heard \"{tr[i][0]}\"" + (f" (conf {tr[i][3]})" if tr[i][3] is not None else "")
+            + f" → `{json.dumps([{k: v for k, v in st.items() if k in ('action', 'app', 'contact', 'channel', 'text', 'time', 'number')} for st in steps.get(i, [])], ensure_ascii=False)}`"
+            for i in sorted(tr)] + [""]
     report = "\n".join(lines + [""] + detail)
-    out = ROOT / f"eval/results/speech-{date.today()}.md"
+    suffix = ("-rescore" if "--rescore" in sys.argv else "") + (f"-{slug(only)}" if only else "")
+    if "--brain" in sys.argv:
+        suffix += "-" + sys.argv[sys.argv.index("--brain") + 1]
+    out = ROOT / f"eval/results/speech-{date.today()}{suffix}.md"
     out.parent.mkdir(exist_ok=True)
     out.write_text(report)
     print(report)

@@ -28,8 +28,10 @@ final class Agent: ObservableObject {
     private let executor: Executor
     private let speech: SpeechEngine
     private let planner = try? ModelPlanner()
+    private let qwen: QwenPlanner
     private var parser = CommandParser()
     private var cancelled = false
+    private var usedAlternative = false
     private var hideTask: Task<Void, Never>?
     private var startTask: Task<Void, Never>?
 
@@ -37,6 +39,7 @@ final class Agent: ObservableObject {
         self.settings = settings
         executor = Executor(settings: settings, contacts: contacts)
         speech = SpeechEngine(settings: settings)
+        qwen = QwenPlanner(idleSeconds: settings.brainIdleSeconds)
         executor.isCancelled = { [weak self] in MainActor.assumeIsolated { self?.cancelled ?? true } }
         speech.onText = { [weak self] in self?.transcript = $0 }
         speech.onLevel = { [weak self] in self?.level = $0 }
@@ -74,6 +77,8 @@ final class Agent: ObservableObject {
         rows = []
         message = nil
         set(.listening)
+        // Warm the brain while you talk, in case the phrase rules can't read the sentence.
+        if usesQwen { Task { try? await qwen.load() } }
         startTask = Task {
             do {
                 try await speech.start()
@@ -134,16 +139,12 @@ final class Agent: ObservableObject {
             History.append(utterance: text, command: nil, results: [])
             return
         }
-        // Heard unclearly: type messages as drafts rather than sending misheard words.
-        if let c = heard.confidence, c < settings.minSendConfidence, command.steps.contains(where: { $0.action == .sendMessage || $0.action == .call }) {
-            command.steps = command.steps.compactMap { s in
-                var s = s
-                if s.action == .call { return nil }
-                if s.action == .sendMessage { s.action = .draftMessage }
-                return s
-            }
-            message = "Heard it unclearly, so the message is a draft, not sent."
-            Log.agent.info("low confidence \(conf, privacy: .public): sends downgraded to drafts")
+        // Not sure it heard right (low confidence, or only a second guess made sense): drafts, not sends.
+        let decision = SendPolicy.apply(command, confidence: heard.confidence, minConfidence: settings.minSendConfidence, usedAlternative: usedAlternative)
+        if let reason = decision.reason {
+            command = decision.command
+            message = reason
+            Log.agent.info("sends downgraded to drafts (confidence \(conf, privacy: .public), alternative \(self.usedAlternative))")
         }
         Log.agent.info("\(command.source.rawValue, privacy: .public): \(command.steps.map(\.summary).joined(separator: " | "), privacy: .public)")
         rows = command.steps.map { Row(text: $0.summary, status: .pending) }
@@ -178,15 +179,27 @@ final class Agent: ObservableObject {
     }
 
     func understand(_ heard: Heard) async -> Command? {
+        usedAlternative = false
         if let (command, index) = parser.parse(candidates: heard.candidates) {
-            if index > 0 { Log.agent.info("used alternative #\(index): \(command.utterance, privacy: .public)") }
+            if index > 0 {
+                usedAlternative = true
+                Log.agent.info("used alternative #\(index): \(command.utterance, privacy: .public)")
+            }
             return command
         }
-        guard settings.useModelFallback, let planner else { return nil }
+        guard settings.useModelFallback else { return nil }
         message = "Thinking…"
         defer { message = nil }
-        return try? await planner.plan(HearingFixes.apply(heard.text))
+        let text = HearingFixes.apply(heard.text)
+        if usesQwen {
+            do { return try await qwen.plan(text) } catch {
+                Log.agent.error("Qwen failed, using Apple's model: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+        return try? await planner?.plan(text)
     }
+
+    private var usesQwen: Bool { settings.useModelFallback && settings.brain == "qwen" && QwenPlanner.isDownloaded }
 
     // MARK: State
 

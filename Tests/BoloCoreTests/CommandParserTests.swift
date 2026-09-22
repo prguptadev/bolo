@@ -4,7 +4,7 @@ import Testing
 
 private let parser = CommandParser(
     knownNames: ["bhai", "priya", "priya sharma", "mom", "rahul"],
-    knownApps: ["notes", "microsoft teams", "whatsapp", "google chrome", "safari", "slack", "intellij idea"])
+    knownApps: ["notes", "microsoft teams", "whatsapp", "google chrome", "safari", "slack", "intellij idea", "calendar", "calculator"])
 
 private func one(_ s: String) -> Step? {
     guard let c = parser.parse(s), c.steps.count == 1 else { return nil }
@@ -232,6 +232,95 @@ private func one(_ s: String) -> Step? {
         let c = Command(utterance: "jot down call the plumber tomorrow",
                         steps: [Step(.call, contact: "plumber"), Step(.sendMessage, contact: "bhai", text: "hi")], source: .model)
         #expect(Grounding.limitModel(c)?.steps == [Step(.draftMessage, contact: "bhai", text: "hi")])
+    }
+}
+
+/// Transcripts Apple's recognizer produced for the 50 recorded prompts (eval/recordings, 2026-09-22).
+@Suite struct RecordedTranscripts {
+    private func first(_ heard: String) -> Step? { parser.parse(candidates: [heard])?.command.steps.first }
+    private func all(_ heard: String) -> [Action]? { parser.parse(candidates: [heard])?.command.steps.map(\.action) }
+
+    @Test func teamSingular() {
+        #expect(first("Priya Ko, Team Pe message Karo joining in five minutes.") == Step(.sendMessage, contact: "Priya", channel: .teams, text: "joining in five minutes"))
+        #expect(first("Send a team message to Priya, saying the build is green.") == Step(.sendMessage, contact: "Priya", channel: .teams, text: "the build is green"))
+        #expect(first("Team call Priya.") == Step(.call, contact: "Priya", channel: .teams))
+    }
+
+    @Test func hinglishWithCommasEverywhere() {
+        #expect(first("Bhai Ko, WhatsApp Kar Do, I'll be late by 20 minutes.") == Step(.sendMessage, contact: "Bhai", channel: .whatsapp, text: "I'll be late by 20 minutes"))
+        #expect(first("Mom, Ko, message, Bhejo, Mein, Ghar, Ponj Gya.")?.contact == "Mom")
+        #expect(first("Papa Ko, Bol, Do, Main, Das, Minute, Mein, Ara, Hoon.")?.action == .sendMessage)
+        #expect(first("Mom, Ko, WhatsApp Pe Niko, dinner at eight is fine.")?.action == .draftMessage)
+        #expect(first("Bhai, Ko, call Karo teams, Pe") == Step(.call, contact: "Bhai", channel: .teams))
+    }
+
+    @Test func droppedAndBecomesTwoSteps() {
+        #expect(all("Send a team message to Priya, saying joining in five minutes, remind me at 5 PM to call her.") == [.sendMessage, .addReminder])
+        #expect(all("Chrome, Kholo, or Google, Karo, spring boot actuator.") == [.openApp, .webSearch])
+        #expect(all("Open teams, and then Bhai Ko, WhatsApp Karo, on my way.") == [.openApp, .sendMessage])
+    }
+
+    @Test func misheardWords() {
+        #expect(first("Open Intelligent.") == Step(.openApp, app: "IntelliJ IDEA"))
+        #expect(first("Open get up.com") == Step(.openURL, text: "github.com"))
+        #expect(first("WhatsApp be saying bring milk and call me when you reach.")?.contact == "bhai")
+        #expect(first("Notes down demo is on Friday.") == Step(.newNote, text: "demo is on Friday"))
+        #expect(first("Playing Lofi beat on YouTube?") == Step(.webSearch, text: "Lofi beat", engine: .youtube))
+        #expect(first("Joining my next meeting?") == Step(.joinNextMeeting))
+    }
+
+    @Test func volumeWording() {
+        #expect(first("Volume up to 30") == Step(.setVolume, number: 30))
+        #expect(first("Turn the volume to 20.") == Step(.setVolume, number: 20))
+        #expect(first("turn the volume down to 20") == Step(.setVolume, number: 20))
+    }
+
+    @Test func remindersInOtherWords() {
+        let hindi = first("Mujhe, Che, Baji, Ya, De, Lana, Ki, Jim, Jana Hai?")
+        #expect(hindi?.action == .addReminder)
+        #expect(hindi?.text == "Jim Jana Hai")
+        #expect(hindi?.time == "6 baje")
+        let forget = first("Don't let me forget to pay the electricity bill at 7 PM.")
+        #expect(forget?.action == .addReminder)
+        #expect(forget?.text == "pay the electricity bill")
+    }
+
+    @Test func moreEnglishPhrasings() {
+        #expect(first("Could you pull up my calendar?") == Step(.openApp, app: "Calendar"))
+        #expect(first("Let Priya know on teams that deployment is done.") == Step(.sendMessage, contact: "Priya", channel: .teams, text: "deployment is done"))
+    }
+
+    @Test func openChatAndSendIsOneCommand() {
+        let c = parser.parse(candidates: ["Open WhatsApp chat with mom and send a message to reach home."])?.command
+        #expect(c?.steps.count == 1)
+        #expect(c?.steps.first?.contact == "mom")
+        #expect(c?.steps.first?.action == .sendMessage)
+    }
+
+    @Test func unsureSendsBecomeDrafts() {
+        let send = Command(utterance: "x", steps: [Step(.sendMessage, contact: "Mom", text: "Mein Ghar Ponj Gya"), Step(.call, contact: "Mom")], source: .rules)
+        let low = SendPolicy.apply(send, confidence: 0.45, minConfidence: 0.6, usedAlternative: false)
+        #expect(low.command.steps == [Step(.draftMessage, contact: "Mom", text: "Mein Ghar Ponj Gya")])
+        #expect(low.reason != nil)
+        let alt = SendPolicy.apply(send, confidence: 0.95, minConfidence: 0.6, usedAlternative: true)
+        #expect(alt.command.steps.first?.action == .draftMessage)
+        let sure = SendPolicy.apply(send, confidence: 0.9, minConfidence: 0.6, usedAlternative: false)
+        #expect(sure.command.steps.count == 2)
+        #expect(sure.reason == nil)
+    }
+
+    @Test func nonCommandsStayNonCommands() {
+        #expect(parser.parse(candidates: ["I was thinking about the message bye later."]) == nil)
+        #expect(parser.parse(candidates: ["Tell me a joke?"]) == nil)
+        #expect(parser.parse(candidates: ["What's the weather like?"]) == nil)
+    }
+
+    @Test func bajeTimes() {
+        let now = ISO8601DateFormatter().date(from: "2026-09-22T15:00:00+05:30")!
+        let six = TimePhrase.resolve("6 baje", now: now)!
+        #expect(six.timeIntervalSince(now) == 3 * 3600)   // 6 pm today, not 6 am
+        let nine = TimePhrase.resolve("9 baje", now: now)!
+        #expect(nine.timeIntervalSince(now) == 6 * 3600)  // 9 pm today
     }
 }
 

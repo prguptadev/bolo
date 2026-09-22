@@ -1,0 +1,496 @@
+{
+ "load": 0,
+ "transcripts": {
+  "p01": [
+   "Open Intelligent",
+   253,
+   [
+    "Open Intelligent.",
+    "Open Intelligence."
+   ],
+   0.91
+  ],
+  "p02": [
+   "Chrome, Kholo",
+   71,
+   [
+    "Chrome Kholo.",
+    "Chrome Kholo"
+   ],
+   0.8
+  ],
+  "p03": [
+   "Open Intelligent.",
+   61,
+   [
+    "Open Intelligence.",
+    "Open intelligent."
+   ],
+   0.77
+  ],
+  "p04": [
+   "Launch WhatsApp",
+   63,
+   [
+    "Launch WhatsApp.",
+    "Launch WhatsApp?"
+   ],
+   0.99
+  ],
+  "p05": [
+   "Open get up.com",
+   63,
+   [
+    "Open git up.com",
+    "Open get up.com."
+   ],
+   0.68
+  ],
+  "p06": [
+   "Bhai Ko, WhatsApp Kar Do, I'll be late by 20 minutes.",
+   100,
+   [
+    "Bhai Ko WhatsApp Kar Do, I'll be late by 20 minutes.",
+    "Bhai, Ko, WhatsApp Kar Do, I'll be late by 20 minutes.",
+    "Bhai Ko, WhatsApp Kar Do I'll be late by 20 minutes.",
+    "Bhai Ko, WhatsApp Kar Do, I'll be late by 20 minutes?",
+    "Bhai Ko, WhatsApp Kar Do, I'll be late by 20 minutes"
+   ],
+   0.9
+  ],
+  "p07": [
+   "Mom, Ko, message, Bhejo, Mein, Ghar, Ponj Gya.",
+   102,
+   [
+    "Mom, Ko message, Bhejo, Mein, Ghar, Ponj Gya.",
+    "Mom, Ko, message, Bhejo, Mein, Ghar, Ponj, Gya.",
+    "Mom, Ko, message, Bhejo, Mein, Ghar, Ponj, Gya"
+   ],
+   0.45
+  ],
+  "p08": [
+   "Priya Ko, Team Pe message Karo joining in five minutes.",
+   100,
+   [
+    "Priya Ko Team Pe message Karo joining in five minutes.",
+    "Priya Ko, Team Pe message Karo, joining in five minutes.",
+    "Priya Ko, Team Pe message Karo joining in five minutes?",
+    "Priya Ko, Team Pe message Karo joining in five minutes"
+   ],
+   0.73
+  ],
+  "p09": [
+   "Send a team message to Priya, saying the build is green.",
+   95,
+   [
+    "Send a team message to Priya saying the build is green.",
+    "Send a team message to Priya, saying, the build is green.",
+    "Send a team message to Priya, saying the bill is green.",
+    "Send a team message to Priya, saying the build is green"
+   ],
+   0.89
+  ],
+  "p10": [
+   "WhatsApp myself saying hello from Bolo?",
+   73,
+   [
+    "WhatsApp myself, saying hello from Bolo?",
+    "WhatsApp myself saying hello from Bolo."
+   ],
+   0.89
+  ],
+  "p11": [
+   "Text mom I'm leaving from office now.",
+   75,
+   [
+    "Text mom, I am leaving from office now.",
+    "Text Mom, I am leaving from office now."
+   ],
+   0.96
+  ],
+  "p12": [
+   "Tell Bhai on WhatsApp that I'll call him tonight.",
+   86,
+   [
+    "Tell bhai on WhatsApp that I'll call him tonight.",
+    "Tell Bhai on WhatsApp, that I'll call him tonight.",
+    "Tell Bhai on WhatsApp that I will call him tonight.",
+    "Tell Bhai on WhatsApp that I'll call him tonight?",
+    "Tell Bhai on WhatsApp that I'll call him tonight"
+   ],
+   0.94
+  ],
+  "p13": [
+   "Papa Ko, Bol, Do, Main, Das, Minute, Mein, Ara, Hoon.",
+   109,
+   [
+    "Papa, Ko, Bol, Do, Main, Das, Minute, Mein, Ara, Hoon.",
+    "Papa Ko, Bol, Do, Main, Das, Minute, Mein, Arahoon.",
+    "Papa Ko, Bol, Do, Main, Das, Minute, Mein, Ara, Hoon"
+   ],
+   0.49
+  ],
+  "p14": [
+   "Mom, Ko, WhatsApp Pe Niko, dinner at eight is fine.",
+   88,
+   [
+    "Mom Ko, WhatsApp Pe Niko, dinner at eight is fine.",
+    "Mom, Ko, WhatsApp Pe Niko dinner at eight is fine.",
+    "Mom, Ko, WhatsApp Pe, Niko, dinner at eight is fine.",
+    "Mom, Ko, WhatsApp Pe Niko, dinner at eight is fine"
+   ],
+   0.75
+  ],
+  "p15": [
+   "Open Bhai's WhatsApp chat.",
+   65,
+   [
+    "Open bhai's WhatsApp chat.",
+    "Open Bhai's WhatsApp chat?",
+    "Open Bhai's WhatsApp chat"
+   ],
+   0.88
+  ],
+  "p16": [
+   "Open WhatsApp chat with mom and send a message to reach home.",
+   87,
+   [
+    "Open WhatsApp chat with mom, and send a message to reach home.",
+    "Open WhatsApp chat with Mom and send a message to reach home.",
+    "Open WhatsApp chat with mom and send the message to reach home."
+   ],
+   0.92
+  ],
+  "p17": [
+   "Team call Priya.",
+   64,
+   [
+    "Team call Priya",
+    "Team call Priya?"
+   ],
+   0.9
+  ],
+  "p18": [
+   "Call Rahul on teams.",
+   66,
+   [
+    "Call Rahul, on teams.",
+    "Call Rahul on Teams.",
+    "Call Rahul on Teams"
+   ],
+   0.84
+  ],
+  "p19": [
+   "New note, grocery milk, egg bread.",
+   75,
+   [
+    "New note, grocery milk, egg bread",
+    "New note, grocery milk, add bread."
+   ],
+   0.68
+  ],
+  "p20": [
+   "Notes down demo is on Friday.",
+   70,
+   [
+    "Notes down, demo is on Friday.",
+    "Notes down demo is on Friday",
+    "Notes down demo is on Friday?"
+   ],
+   0.93
+  ],
+  "p21": [
+   "Remind me at 5 PM to call Bhai.",
+   72,
+   [
+    "Remind me at 5 PM to call bhai.",
+    "Remind me at 5 PM to call Bhai"
+   ],
+   0.87
+  ],
+  "p22": [
+   "Remind me in 10 minutes to check the build.",
+   86,
+   [
+    "Remind me in 10 minutes, to check the build.",
+    "Remind me in 10 minutes to check the belt.",
+    "Remind me in 10 minutes to check the bill."
+   ],
+   0.9
+  ],
+  "p23": [
+   "Search YouTube for Jeevan GC Twinning.",
+   76,
+   [
+    "Search YouTube for Jeevan GC training.",
+    "Search YouTube for Jeevan GC Twinning"
+   ],
+   0.65
+  ],
+  "p24": [
+   "Google JBM heap dump analysis",
+   80,
+   [
+    "Google JBM, heap, dump analysis",
+    "Google JBM heap, dump analysis",
+    "Google JBM heap dump analysis."
+   ],
+   0.89
+  ],
+  "p25": [
+   "Playing Lofi beat on YouTube?",
+   67,
+   [
+    "Playing Lofi beat on YouTube.",
+    "Playing Lofi beat on YouTube"
+   ],
+   0.83
+  ],
+  "p26": [
+   "Joining my next meeting?",
+   64,
+   [
+    "Join my next meeting?",
+    "Joining my next meeting",
+    "Joining my next meeting."
+   ],
+   0.93
+  ],
+  "p27": [
+   "Volume up to 30",
+   59,
+   [
+    "volume up to 30",
+    "Volume up to 30.",
+    "Volume up to 30%"
+   ],
+   0.97
+  ],
+  "p28": [
+   "Mute",
+   57,
+   [
+    "Mute.",
+    "mute"
+   ],
+   0.95
+  ],
+  "p29": [
+   "Lock the screen.",
+   58,
+   [
+    "lock the screen.",
+    "Lock the screen",
+    "Lock the screen?"
+   ],
+   0.98
+  ],
+  "p30": [
+   "Run my stand-up shortcut.",
+   70,
+   [
+    "Run my stand up shortcut.",
+    "Run my standup shortcut.",
+    "Run my stand-up shortcut"
+   ],
+   0.87
+  ],
+  "p31": [
+   "Type, thank will review today.",
+   70,
+   [
+    "Type thank will review today.",
+    "Type thank, will review today.",
+    "Type, thank will review today?"
+   ],
+   0.8
+  ],
+  "p32": [
+   "Send a team message to Priya, saying joining in five minutes, remind me at 5 PM to call her.",
+   130,
+   [
+    "Send a team message to Priya saying joining in five minutes, remind me at 5 PM to call her.",
+    "Send a team message to Priya Singh joining in five minutes, remind me at 5 PM to call her.",
+    "Send a team message to Priya, saying joining in five minutes remind me at 5 PM to call her."
+   ],
+   0.84
+  ],
+  "p33": [
+   "Open teams, and then Bhai Ko, WhatsApp Karo, on my way.",
+   88,
+   [
+    "Open teams and then Bhai Ko, WhatsApp Karo, on my way.",
+    "Open teams, and then Bhai Ko, WhatsApp Karo on my way.",
+    "Open teams, and then Bhai Ko, WhatsApp Karo, on my way"
+   ],
+   0.84
+  ],
+  "p34": [
+   "Chrome, Kholo, or Google, Karo, spring boot actuator.",
+   97,
+   [
+    "Chrome, Kholo, or Google, Karo, Spring boot actuator.",
+    "Chrome, Kholo, or Google, Karo, spring boot actuator"
+   ],
+   0.68
+  ],
+  "p35": [
+   "WhatsApp be saying bring milk and call me when you reach.",
+   87,
+   [
+    "WhatsApp B saying bring milk and call me when you reach.",
+    "WhatsApp be saying, bring milk and call me when you reach.",
+    "WhatsApp be saying bring milk, and call me when you reach.",
+    "WhatsApp be saying bring milk and call me when you reach"
+   ],
+   0.88
+  ],
+  "p36": [
+   "Could you pull up my calendar?",
+   71,
+   [
+    "could you pull up my calendar?",
+    "Could you pull up my calculator?",
+    "Could you pull up my calendar."
+   ],
+   0.98
+  ],
+  "p37": [
+   "I need to tell Bhai on WhatsApp that I am stuck in track.",
+   99,
+   [
+    "I need to tell bhai on WhatsApp that I am stuck in track.",
+    "I need to tell Bhai on WhatsApp that I am stuck in traffic.",
+    "I need to tell Bhai on WhatsApp that I am stuck in trash."
+   ],
+   0.86
+  ],
+  "p38": [
+   "Let Priya know on teams that deployment is done.",
+   83,
+   [
+    "Let priya know on teams that deployment is done.",
+    "Let Preya know on teams that deployment is done.",
+    "Let Priya know on teams, that deployment is done.",
+    "Let Priya know on teams that deployment is done?"
+   ],
+   0.91
+  ],
+  "p39": [
+   "Shut down the call, plumber tomorrow.",
+   72,
+   [
+    "Jot down the call, plumber tomorrow.",
+    "Shut down the call plumber tomorrow.",
+    "Shut down the call, plumber tomorrow"
+   ],
+   0.82
+  ],
+  "p40": [
+   "Don't let me forget to pay the electricity bill at 7 PM.",
+   91,
+   [
+    "Don't let me forgot to pay the electricity bill at 7 PM.",
+    "Don't let me forget to pay the electricity bill at 7 PM",
+    "Don't let me forget to pay the electricity bill at 7 PM?"
+   ],
+   0.94
+  ],
+  "p41": [
+   "Turn the volume to 20.",
+   61,
+   [
+    "Turn the volume to 20",
+    "Turn the volume to 20?"
+   ],
+   0.83
+  ],
+  "p42": [
+   "Find me some video on Cortland Korotine.",
+   90,
+   [
+    "Find me some video on Kortland Korotine.",
+    "Find me some video on Cortland Korotine?",
+    "Find me some video on Cortland Korotine"
+   ],
+   0.68
+  ],
+  "p43": [
+   "Bhai, Ko, call Karo teams, Pe",
+   73,
+   [
+    "Bhai Ko, call Karo teams, Pe",
+    "Bhai Ko call Karo teams, Pe",
+    "Bhai, Ko, call Karo teams Pe?",
+    "Bhai, Ko, call Karo teams, Pe?"
+   ],
+   0.76
+  ],
+  "p44": [
+   "Mujhe, Che, Baji, Ya, De, Lana, Ki, Jim, Jana Hai?",
+   111,
+   [
+    "Mujhe, Che, Baji, Aad, De, Lana, Ki, Jim, Jana Hai?",
+    "Mujhe, Che, Baji, Ya, De, Lana, Ke, Jim, Jana Hai?",
+    "Mujhe, Che, Baji, Ya, De, Lana, Ki, Jim, Jana Hai."
+   ],
+   0.46
+  ],
+  "p45": [
+   "Message Priya that I'll be 10 minutes late.",
+   80,
+   [
+    "Message Priya, that I'll be 10 minutes late.",
+    "Message Priya that I'll be in 10 minutes late.",
+    "Message Priya that I'll be 10 minutes."
+   ],
+   0.95
+  ],
+  "p46": [
+   "Open calculator",
+   56,
+   [
+    "Open calculator.",
+    "Open calculator?"
+   ],
+   0.88
+  ],
+  "p47": [
+   "What's the weather like?",
+   64,
+   [
+    "what's the weather like?",
+    "What is the weather like?",
+    "What's the weather?"
+   ],
+   1
+  ],
+  "p48": [
+   "I was thinking about the message bye later.",
+   75,
+   [
+    "I was thinking about the message Bhai later.",
+    "I was thinking about the message bhai later."
+   ],
+   0.88
+  ],
+  "p49": [
+   "Hmm.",
+   54,
+   [
+    "Mm.",
+    "Mmm."
+   ],
+   0.66
+  ],
+  "p50": [
+   "Tell me a joke?",
+   60,
+   [
+    "Tell me a joke.",
+    "Tell me a joke"
+   ],
+   0.94
+  ]
+ }
+}

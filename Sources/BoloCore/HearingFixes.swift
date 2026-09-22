@@ -15,15 +15,33 @@ public enum HearingFixes {
         ("\\b(message|msg|ko)\\s+(?:bhej o|be jo|bejo|bhejoh)\\b", "$1 bhejo"),
         // "kholo" heard as "cholo/kolo/khulo/colo" at the end of "<app> kholo"
         ("\\s(?:cholo|kolo|khulo|colo|kho lo)$", " kholo"),
-        // "likho" heard as "leko/lick ho/likko"
-        ("\\b(pe|par|ko)\\s+(?:leko|lick ho|likko|leakho)\\b", "$1 likho"),
+        // "likho" heard as "niko/leko/lick ho/likko" ("WhatsApp Pe Niko")
+        ("\\b(pe|par|ko)\\s+(?:niko|nikho|leko|lick ho|likko|leakho)\\b", "$1 likho"),
         // "WhatsApp" heard as "what's up / what sapp" when used as the app
         ("\\bko\\s+(?:what'?s ?up|what sapp?|whats sap)\\b", "ko WhatsApp"),
         ("^(?:what'?s ?up|what sapp?)\\s+(?=\\S+\\s+(?:saying|that|ki)\\b)", "WhatsApp "),
         // "yaad dilana" heard as "yard dilana / yaad de lana"
         ("\\b(?:yard|yad|yaar) (?:dilana|de lana|dila na)\\b", "yaad dilana"),
-        // "Teams" heard as "team's/teems"
-        ("\\b(?:team's|teems|tims)\\b(?=\\s+(?:pe|par|call|message|chat|karo))", "teams"),
+        // "Teams" heard as "team/team's/teems" ("Team call Priya", "send a team message")
+        ("\\b(?:team|team's|teems|tims)\\b(?=\\s+(?:pe|par|call|message|msg|chat|karo))", "teams"),
+        // "bhai" heard as "be/bye/by" right after the channel ("WhatsApp be saying …")
+        ("^(whats ?app|text|message|tell)\\s+(?:be|bye|by|buy|bai)\\s+(?=(?:saying|that|ki|on)\\b)", "$1 bhai "),
+        // "IntelliJ" heard as "Intelligent" when opening an app
+        ("\\b(open|launch|start|switch to)\\s+intelligent\\b", "$1 intellij"),
+        ("^intelligent\\s+(?=kholo\\b)", "intellij "),
+        // "github dot com" heard as "get up.com"
+        ("\\b(?:get ?up|git ?up|get hub)\\s*(?:\\.|dot)\\s*com\\b", "github.com"),
+        // Verbs heard in a different form at the start: "Notes down", "Playing … on YouTube", "Joining my next meeting"
+        ("^notes\\s+(?=down\\b)", "note "),
+        ("^playing\\b(?=.*\\byoutube\\b)", "play"),
+        ("^joining\\b(?=.*\\bmeeting\\b)", "join"),
+        // "yaad dilana" split up ("Ya De Lana"), "baje" as "baji", and Hindi hour words before "baje"
+        ("\\bya(?:ad|d)?\\s+de\\s+lana\\b", "yaad dilana"),
+        ("\\bbaji\\b", "baje"),
+        ("\\b(?:ek)\\s+(?=baje\\b)", "1 "), ("\\b(?:teen)\\s+(?=baje\\b)", "3 "), ("\\b(?:char|chaar)\\s+(?=baje\\b)", "4 "),
+        ("\\b(?:paanch|panch)\\s+(?=baje\\b)", "5 "), ("\\b(?:che|chhe|chhah|chheh)\\s+(?=baje\\b)", "6 "),
+        ("\\b(?:saat|sat)\\s+(?=baje\\b)", "7 "), ("\\b(?:aath|aat)\\s+(?=baje\\b)", "8 "), ("\\b(?:nau|now)\\s+(?=baje\\b)", "9 "),
+        ("\\b(?:das|dus)\\s+(?=baje\\b)", "10 "), ("\\b(?:gyarah|gyara)\\s+(?=baje\\b)", "11 "), ("\\b(?:barah|bara)\\s+(?=baje\\b)", "12 "),
     ].map { (try! NSRegularExpression(pattern: $0.0, options: .caseInsensitive), $0.1) }
 
     public static func apply(_ text: String) -> String {

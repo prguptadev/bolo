@@ -17,24 +17,28 @@ About 20 minutes, most of it installing Xcode. Every step runs on the Mac that w
    ```bash
    sudo xcode-select -s /Applications/Xcode.app
    ```
-3. Xcode › Settings › Accounts › **+** › Apple ID. Sign in with your developer Apple ID, then
+3. Install Xcode's Metal Toolchain (MLX needs it to compile Qwen's GPU code; the build script
+   also does this for you if it's missing):
+   ```bash
+   xcodebuild -downloadComponent MetalToolchain
+   ```
+4. Xcode › Settings › Accounts › **+** › Apple ID. Sign in with your developer Apple ID, then
    **Manage Certificates… › + › Apple Development**.
-4. Check it's there:
+5. Check it's there:
    ```bash
    security find-identity -v -p codesigning
    ```
    You should see an `Apple Development: …` line. Without it Bolo still builds, but macOS asks
    for Accessibility and Microphone again after every rebuild.
 
-Command Line Tools alone (`xcode-select --install`) also build Bolo, but later phases (local Qwen
-model, vision) need full Xcode.
+Full Xcode is required: Qwen runs on MLX, whose GPU kernels only compile under Xcode.
 
 ## 3. Get the code, test, install
 
 ```bash
 git clone https://github.com/prguptadev/bolo.git ~/Developer/Bolo
 cd ~/Developer/Bolo
-scripts/test.sh                  # expect: 30 tests passed
+scripts/test.sh                  # expect: all tests passed
 scripts/build-app.sh --install   # builds, signs, copies to ~/Applications, launches
 ```
 
@@ -50,7 +54,29 @@ A microphone icon appears in the menu bar.
 4. Menu bar icon › **Check setup…**: everything except Reminders and Calendar should be ✓.
    Those two, and **Automation** (for Messages, Notes, Mail), are asked the first time you use them.
 
-## 5. Add nicknames
+## 5. Download the Qwen brain (once, 3.1 GB)
+
+The phrase rules handle everyday commands instantly. For anything phrased differently (and for
+trickier Hinglish), Bolo uses Qwen3.5-4B on the GPU. Download it once:
+
+```bash
+~/Applications/Bolo.app/Contents/MacOS/Bolo --download-brain
+```
+
+It prints a test sentence and how Qwen understood it. Bolo loads Qwen while you're talking and
+unloads it after 5 idle minutes, so its ~3.2 GB of memory is only used while you use Bolo.
+
+## 6. Best hearing
+
+- Speak close to the Mac's microphones or use AirPods; Bolo already turns on Apple's noise
+  suppression and echo cancellation.
+- While holding the key once, open **Control Center › Mic Mode** and choose **Voice Isolation**.
+  macOS remembers it for Bolo.
+- Bolo builds a custom speech vocabulary from your contacts, nicknames and apps (a few seconds
+  after launch, and again after **Reload contacts and apps**). To build it by hand and see if it
+  worked: `~/Applications/Bolo.app/Contents/MacOS/Bolo --vocabulary`.
+
+## 7. Add nicknames
 
 Menu bar icon › **Nicknames…** opens the file. Add yourself first, for safe testing:
 
@@ -65,7 +91,7 @@ Menu bar icon › **Nicknames…** opens the file. Add yourself first, for safe 
 WhatsApp needs a phone number (with +country code), Teams needs the person's work email. Save,
 then menu bar icon › **Reload contacts and apps**. The Nickname field in the Contacts app works too.
 
-## 6. Test, safest first
+## 8. Test, safest first
 
 Hold the **right ⌥** key, speak, release. Stop anything with **Esc**.
 
@@ -88,7 +114,7 @@ Check how a sentence is understood without acting on it:
 ~/Applications/Bolo.app/Contents/MacOS/Bolo --say "bhai ko whatsapp karo on my way" --dry-run
 ```
 
-## 7. Updating
+## 9. Updating
 
 After new code is pushed:
 
@@ -99,7 +125,7 @@ cd ~/Developer/Bolo && scripts/update.sh
 It pulls, runs the tests, rebuilds, reinstalls and relaunches. Permissions carry over because the
 signature stays the same.
 
-## 8. When something goes wrong
+## 10. When something goes wrong
 
 Collect these and share them:
 
@@ -117,3 +143,5 @@ Plus a screenshot of menu bar icon › **Check setup…**.
 | "I don't know who …" | Add the nickname, then Reload contacts and apps |
 | WhatsApp opens but doesn't send | The log line `text box readable=… matched=…` shows why; Bolo won't send if the box doesn't hold your exact message |
 | Permissions asked again after every update | No Apple Development certificate: see step 2 |
+| A message was typed but not sent, notch says "heard it unclearly" | Speech confidence was below `minSendConfidence` (settings); speak closer, or lower it |
+| Unusual sentences aren't understood | Qwen not downloaded (Check setup… shows it): step 5 |

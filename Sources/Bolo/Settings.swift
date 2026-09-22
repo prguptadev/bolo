@@ -10,17 +10,24 @@ struct Settings: Codable {
     var speechLocale: String = "en_IN"
     /// "dictation": Apple's dictation model in short-command mode, with Bolo's custom vocabulary and
     /// alternative guesses. "transcriber": Apple's newer general transcription model.
-    var speechEngine: String = "dictation"
+    var speechEngine: String = "transcriber"
     /// Apple voice processing on the microphone: noise suppression, echo cancellation, automatic gain.
     var noiseSuppression: Bool = true
     /// Teach the dictation model your contact names, app names and Bolo's command phrases.
-    var customVocabulary: Bool = true
+    var customVocabulary: Bool = false
     /// Keep listening this long after the key is released, so the last word isn't cut off.
     var releaseTailMs: Int = 350
     /// Below this speech confidence (0–1), messages are typed as drafts instead of sent.
-    var minSendConfidence: Double = 0.45
-    /// Use Apple's on-device model when the phrase patterns don't match (it can't send or call).
+    var minSendConfidence: Double = 0.6
+    /// Use a model when the phrase patterns don't match.
     var useModelFallback: Bool = true
+    /// "qwen": Qwen3.5-4B on the GPU (best; needs the 3.1 GB download, see `Bolo --download-brain`).
+    /// "apple": Apple's on-device model (built in, weaker; it may not send, call or type).
+    var brain: String = "qwen"
+    /// Unload Qwen after this many seconds without use, freeing ~3.2 GB.
+    var brainIdleSeconds: Double = 300
+    /// Bumped when a default changes because of measurements, so old defaults get upgraded.
+    var settingsVersion: Int = 2
 
     init() {}
 
@@ -37,6 +44,17 @@ struct Settings: Codable {
         releaseTailMs = try c.decodeIfPresent(Int.self, forKey: .releaseTailMs) ?? d.releaseTailMs
         minSendConfidence = try c.decodeIfPresent(Double.self, forKey: .minSendConfidence) ?? d.minSendConfidence
         useModelFallback = try c.decodeIfPresent(Bool.self, forKey: .useModelFallback) ?? d.useModelFallback
+        brain = try c.decodeIfPresent(String.self, forKey: .brain) ?? d.brain
+        brainIdleSeconds = try c.decodeIfPresent(Double.self, forKey: .brainIdleSeconds) ?? d.brainIdleSeconds
+        settingsVersion = try c.decodeIfPresent(Int.self, forKey: .settingsVersion) ?? 1
+        if settingsVersion < 2 {
+            // v2 (speech eval on 50 recordings, 2026-09-22): the transcriber beat dictation, the custom
+            // vocabulary didn't help, and garbled Hinglish scored 0.45–0.49. Upgrade untouched old defaults.
+            if speechEngine == "dictation" { speechEngine = d.speechEngine }
+            if customVocabulary { customVocabulary = d.customVocabulary }
+            if minSendConfidence == 0.45 { minSendConfidence = d.minSendConfidence }
+            settingsVersion = 2
+        }
     }
 
     static let folder: URL = {

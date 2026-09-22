@@ -36,7 +36,25 @@ func emit(_ id: String, _ text: String?, _ ms: Double, alts: [String] = [], conf
     fflush(stdout)
 }
 
-struct Heard { var text = ""; var alts: [String] = []; var conf: Double? }
+struct Heard {
+    var text = ""
+    var alts: [String] = []
+    var conf: Double?
+    var segments: [(String, [String])] = []
+
+    /// Whole-utterance alternatives: swap one segment at a time (same as Bolo's SpeechEngine).
+    mutating func finish() {
+        var out: [String] = []
+        for (i, seg) in segments.enumerated() {
+            for alt in seg.1.prefix(3) where alt != seg.0 {
+                var texts = segments.map(\.0)
+                texts[i] = alt
+                out.append(texts.joined().trimmingCharacters(in: .whitespaces))
+            }
+        }
+        alts = Array(out.prefix(6))
+    }
+}
 
 func confidence(_ t: AttributedString) -> Double? {
     var total = 0.0, weight = 0.0
@@ -74,10 +92,11 @@ func appleTranscribe(_ url: URL, locale: Locale) async throws -> Heard {
         var h = Heard(); var confs: [Double] = []
         for try await r in t.results where r.isFinal {
             h.text += String(r.text.characters)
-            h.alts += r.alternatives.map { String($0.characters) }
+            h.segments.append((String(r.text.characters), r.alternatives.map { String($0.characters) }))
             if let c = confidence(r.text) { confs.append(c) }
         }
         h.conf = confs.isEmpty ? nil : confs.reduce(0, +) / Double(confs.count)
+        h.finish()
         return h
     }
     return try await run(t, url, collect: collect)
@@ -91,10 +110,11 @@ func dictationTranscribe(_ url: URL, locale: Locale, lm: SFSpeechLanguageModel.C
         var h = Heard(); var confs: [Double] = []
         for try await r in t.results where r.isFinal {
             h.text += latin(String(r.text.characters), locale)
-            h.alts += r.alternatives.map { latin(String($0.characters), locale) }
+            h.segments.append((latin(String(r.text.characters), locale), r.alternatives.map { latin(String($0.characters), locale) }))
             if let c = confidence(r.text) { confs.append(c) }
         }
         h.conf = confs.isEmpty ? nil : confs.reduce(0, +) / Double(confs.count)
+        h.finish()
         return h
     }
     return try await run(t, url, collect: collect)

@@ -98,7 +98,8 @@ public struct Step: Codable, Sendable, Equatable {
 }
 
 public struct Command: Codable, Sendable {
-    public enum Source: String, Codable, Sendable { case rules, model }
+    /// rules = phrase parser, model = Apple's on-device model, qwen = Qwen3.5-4B via MLX.
+    public enum Source: String, Codable, Sendable { case rules, model, qwen }
 
     public var utterance: String
     public var steps: [Step]

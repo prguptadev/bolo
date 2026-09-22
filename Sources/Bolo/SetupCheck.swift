@@ -48,6 +48,14 @@ enum SetupCheck {
             lines.append(Line(ok: found, text: "\(name) \(found ? "installed" : "not installed")"))
         }
 
+        if settings.brain == "qwen" {
+            lines.append(Line(
+                ok: QwenPlanner.isDownloaded,
+                text: QwenPlanner.isDownloaded
+                    ? "Qwen brain downloaded (understands unusual phrasing and Hinglish)"
+                    : "Qwen brain not downloaded. Run: ~/Applications/Bolo.app/Contents/MacOS/Bolo --download-brain (3.1 GB)"))
+        }
+
         let nicknames = Nicknames.load()
         lines.append(Line(ok: !nicknames.isEmpty, text: "Nicknames: \(nicknames.count) (\(Settings.nicknamesURL.path))"))
 

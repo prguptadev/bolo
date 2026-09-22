@@ -15,24 +15,55 @@ func value(after flag: String) -> String? {
 
 if let path = value(after: "--batch") {
     Task { @MainActor in
-        struct Prompt: Decodable { let id: String; let say: String; let alts: [String]? }
+        struct Prompt: Decodable { let id: String; let say: String; let alts: [String]?; let conf: Double? }
+        let minConfidence = Settings.load().minSendConfidence
         struct Row: Encodable { let id: String; let source: String?; let steps: [Step]; let ms: Int }
         let names = value(after: "--names")?.split(separator: ",").map(String.init) ?? []
         let apps = Everyday.installedApps()
         let parser = CommandParser(knownNames: names, knownApps: Set(apps.keys).union(AppNames.aliases.keys))
-        let planner = args.contains("--no-model") ? nil : try? ModelPlanner()
+        // --brain apple (default, as in the eval) | qwen | none
+        let brain = args.contains("--no-model") ? "none" : (value(after: "--brain") ?? "apple")
+        let planner = brain == "apple" ? try? ModelPlanner() : nil
+        let qwen = brain == "qwen" ? QwenPlanner(idleSeconds: 600) : nil
         let enc = JSONEncoder()
         enc.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         let lines = (try? String(contentsOfFile: path, encoding: .utf8))?.split(separator: "\n") ?? []
         for line in lines {
             guard let p = try? JSONDecoder().decode(Prompt.self, from: Data(line.utf8)) else { continue }
             let started = Date()
-            var command = parser.parse(candidates: [p.say] + (p.alts ?? []))?.command
+            let parsed = parser.parse(candidates: [p.say] + (p.alts ?? []))
+            var command = parsed?.command
             if command == nil, let planner { command = try? await planner.plan(HearingFixes.apply(p.say)) }
+            if command == nil, let qwen { command = try? await qwen.plan(HearingFixes.apply(p.say)) }
+            if let c = command {
+                command = SendPolicy.apply(c, confidence: p.conf, minConfidence: minConfidence, usedAlternative: (parsed?.index ?? 0) > 0).command
+            }
             let row = Row(id: p.id, source: command?.source.rawValue, steps: command?.steps ?? [], ms: Int(Date().timeIntervalSince(started) * 1000))
             print(String(data: try! enc.encode(row), encoding: .utf8)!)
         }
         exit(0)
+    }
+    RunLoop.main.run()
+} else if args.contains("--download-brain") || args.contains("--test-brain") {
+    // Downloads Qwen3.5-4B (~3.1 GB, once) and runs one sentence through it.
+    Task { @MainActor in
+        let qwen = QwenPlanner(idleSeconds: 60)
+        do {
+            print(QwenPlanner.isDownloaded ? "Qwen is downloaded; loading…" : "Downloading \(QwenPlanner.modelID) (~3.1 GB)…")
+            let t0 = Date()
+            try await qwen.load()
+            print("✓ loaded in \(Int(Date().timeIntervalSince(t0) * 1000)) ms")
+            let sentence = value(after: "--test-brain") ?? "mujhe 6 baje yaad dilana ki gym jaana hai"
+            let t1 = Date()
+            let command = try await qwen.plan(sentence)
+            let enc = JSONEncoder()
+            enc.outputFormatting = [.sortedKeys]
+            print("\"\(sentence)\" → \(String(data: try enc.encode(command?.steps ?? []), encoding: .utf8)!) in \(Int(Date().timeIntervalSince(t1) * 1000)) ms")
+            exit(0)
+        } catch {
+            print("✗ \(error)")
+            exit(1)
+        }
     }
     RunLoop.main.run()
 } else if args.contains("--vocabulary") {

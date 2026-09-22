@@ -60,33 +60,7 @@ public final class ModelPlanner: @unchecked Sendable {
         guard Self.isAvailable else { throw PlannerError.unavailable("\(SystemLanguageModel.default.availability)") }
         let session = LanguageModelSession(instructions: Self.instructions)
         let response = try await session.respond(to: utterance, schema: schema, options: GenerationOptions(temperature: 0))
-        let raw = try JSONDecoder().decode(RawPlan.self, from: Data(response.content.jsonString.utf8))
-        let steps = raw.steps.compactMap { $0.step }
+        let steps = ModelOutput.steps(fromJSON: response.content.jsonString)
         return Grounding.filter(Command(utterance: utterance, steps: steps, source: .model)).flatMap(Grounding.limitModel)
-    }
-
-    private struct RawPlan: Decodable { var steps: [RawStep] }
-
-    private struct RawStep: Decodable {
-        var action: String
-        var app: String?
-        var contact: String?
-        var channel: String?
-        var text: String?
-        var time: String?
-        var number: String?
-
-        var step: Step? {
-            guard let action = Action(rawValue: action) else { return nil }
-            func v(_ s: String?) -> String? {
-                guard let s = s?.trimmingCharacters(in: .whitespaces), !s.isEmpty, s.lowercased() != "none" else { return nil }
-                return s
-            }
-            return Step(
-                action, app: v(app).map(AppNames.canonical), contact: v(contact),
-                channel: v(channel).flatMap(Channel.from(spoken:)), text: v(text), time: v(time),
-                engine: (v(text) ?? "").lowercased().contains("youtube") ? .youtube : .google,
-                number: v(number).flatMap { Int($0.filter(\.isNumber)) })
-        }
     }
 }

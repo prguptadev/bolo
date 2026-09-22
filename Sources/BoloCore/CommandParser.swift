@@ -22,7 +22,8 @@ public struct CommandParser: Sendable {
     /// Returns the first that forms a command and which candidate it was (0 = best).
     public func parse(candidates: [String]) -> (command: Command, index: Int)? {
         for (i, raw) in candidates.enumerated() {
-            let fixed = HearingFixes.apply(raw)
+            // Clean first (commas, fillers, punctuation), so fixes see "Che Baji Ya De Lana", not "Che, Baji, Ya, De, Lana".
+            let fixed = HearingFixes.apply(Self.clean(raw))
             if var command = parse(fixed) {
                 command.utterance = raw
                 return (command, i)
@@ -34,6 +35,13 @@ public struct CommandParser: Sendable {
     public func parse(_ utterance: String) -> Command? {
         let cleaned = Self.clean(utterance)
         guard !cleaned.isEmpty else { return nil }
+
+        // "open WhatsApp chat with mom and send …" is one command; don't split at "and send".
+        for pattern in Self.wholeSentence {
+            if let c = pattern.match(cleaned), let step = pattern.build(self, c) {
+                return Command(utterance: utterance, steps: [step], source: .rules)
+            }
+        }
 
         // A clause that doesn't parse on its own is glued back onto the previous one:
         // "tell bhai I'll be late and call you later" is one message, not two commands.
@@ -59,6 +67,10 @@ public struct CommandParser: Sendable {
         var t = s
         t = t.replacingOccurrences(of: "[\"“”«»]", with: "", options: .regularExpression)
         t = t.replacingOccurrences(of: "\\s*:\\s*", with: " saying ", options: .regularExpression)
+        // Speech engines often drop "and" but put a comma at the pause: "…five minutes, remind me at 5".
+        t = t.replacingOccurrences(
+            of: ",\\s+(?=(?:remind me|open |launch |search |google |join |new note|set a reminder|lock |mute|volume |run ))",
+            with: " and ", options: [.regularExpression, .caseInsensitive])
         t = t.replacingOccurrences(of: "[,;]", with: " ", options: .regularExpression)
         t = t.replacingOccurrences(of: "[.!?]+\\s+(?=\\S)", with: " and ", options: .regularExpression)
         t = t.replacingOccurrences(of: "[.!?]+$", with: "", options: .regularExpression)
@@ -82,7 +94,7 @@ public struct CommandParser: Sendable {
         + "\\S+ ko (?:whatsapp|teams|message|msg|text|call|bolo|bhejo))"
 
     private static let splitter = try! NSRegularExpression(
-        pattern: "\\s+(and then|and also|and|then|aur phir|aur|phir)\\s+(?=" + clauseStart + "\\b)",
+        pattern: "\\s+(and then|and also|and|then|aur phir|aur|phir|or)\\s+(?=" + clauseStart + "\\b)",
         options: .caseInsensitive)
 
     /// Splits "A and B then C" into [("", A), ("and", B), ("then", C)] where B and C start like a command.
@@ -135,6 +147,15 @@ public struct CommandParser: Sendable {
     private static let chatApp = "(?<ch>whats ?app|microsoft teams|teams|imessage|slack)"
     private static let say = "(?:saying|that says|and say|and tell (?:him|her|them)|telling (?:him|her|them)|that|ki)"
 
+    private static let wholeSentence: [Pattern] = [
+        Pattern("open (?:the )?" + chatApp + " (?:chat )?(?:with|of|for) (?<who>.+?) and (?<verb>send|write|type|likho) (?:a message )?(?:saying |that )?(?<msg>.+)") {
+            p, c in p.messageStep(who: c["who"], msg: c["msg"] ?? "", ch: c["ch"], send: c["verb"]?.lowercased() == "send")
+        },
+        Pattern("open (?:my )?(?<who>.+?)(?:'s|s) " + chatApp + "(?: chat)? and (?<verb>send|write|type|likho) (?:a message )?(?:saying |that )?(?<msg>.+)") {
+            p, c in p.messageStep(who: c["who"], msg: c["msg"] ?? "", ch: c["ch"], send: c["verb"]?.lowercased() == "send")
+        },
+    ]
+
     private static let patterns: [Pattern] = [
         // Calls come before messaging so "teams call priya" isn't read as a message to "call".
         Pattern("(?:make a |start a )?(?<ch>teams|whats ?app|facetime) call (?:to |with )?(?<who>.+)") { p, c in
@@ -145,6 +166,9 @@ public struct CommandParser: Sendable {
         },
         Pattern("(?<who>.+?) ko (?:(?<ch>teams|whats ?app) (?:pe |par |on )?)?call (?:karo|kar do|lagao|laga do)") {
             p, c in p.callStep(who: c["who"], ch: c["ch"] ?? "teams")
+        },
+        Pattern("(?<who>.+?) ko call (?:karo|kar do|lagao|laga do) (?<ch>teams|whats ?app) (?:pe|par)") { p, c in
+            p.callStep(who: c["who"], ch: c["ch"])
         },
 
         // Open a chat, optionally typing or sending text.
@@ -164,6 +188,12 @@ public struct CommandParser: Sendable {
         },
         Pattern("tell (?<who>.+?) on " + chatApp + " (?:that )?(?<msg>.+)") { p, c in
             p.messageStep(who: c["who"], msg: c["msg"] ?? "", ch: c["ch"], send: true)
+        },
+        Pattern("let (?<who>.+?) know on " + chatApp + "(?: that)? (?<msg>.+)") { p, c in
+            p.messageStep(who: c["who"], msg: c["msg"] ?? "", ch: c["ch"], send: true)
+        },
+        Pattern("let (?<who>.+?) know(?: that)? (?<msg>.+)") { p, c in
+            p.messageStep(who: c["who"], msg: c["msg"] ?? "", ch: nil, send: true)
         },
         Pattern("tell (?<rest>.+)") { p, c in
             p.messageStep(rest: c["rest"], ch: nil, send: true)
@@ -193,6 +223,14 @@ public struct CommandParser: Sendable {
         Pattern("(?:remind me|set a reminder|set reminder|add a reminder|reminder)(?: to| for)? (?<rest>.+)") { _, c in
             c["rest"].flatMap(CommandParser.reminderStep)
         },
+        Pattern("(?:don['’]?t|do not) let me forget(?: to| about)? (?<rest>.+)") { _, c in
+            c["rest"].flatMap(CommandParser.reminderStep)
+        },
+        // "mujhe 6 baje yaad dilana ki gym jaana hai"
+        Pattern("(?:mujhe |humein )?(?<when>.+?) (?:yaad dilana|yaad dila dena|yaad dilao|remind karna)(?: ki| ke| to)? (?<text>.+)") { _, c in
+            guard let text = c["text"], let when = c["when"] else { return nil }
+            return CommandParser.reminderStep(text + " " + when)
+        },
 
         // Web search.
         Pattern("(?<eng>google|youtube|search) (?:karo|kar do|pe search karo) (?<q>.+)") { _, c in
@@ -220,7 +258,7 @@ public struct CommandParser: Sendable {
         Pattern("(?:next )?meeting (?:join karo|join kar do|join)") { _, _ in Step(.joinNextMeeting) },
 
         // System.
-        Pattern("(?:set )?(?:the )?volume (?:to )?(?<n>\\d{1,3})(?: ?%| percent)?") { _, c in
+        Pattern("(?:turn |set )?(?:the )?volume (?:up |down )?(?:to )?(?<n>\\d{1,3})(?: ?%| percent)?") { _, c in
             c["n"].flatMap(Int.init).map { Step(.setVolume, number: min($0, 100)) }
         },
         Pattern("(?:turn )?(?<v>mute|unmute)(?: (?:the )?(?:volume|sound|audio|mac))?") { _, c in
@@ -241,7 +279,7 @@ public struct CommandParser: Sendable {
         Pattern("(?:open|go to|visit) (?<url>(?:https?://)?[a-z0-9-]+(?:\\.[a-z0-9-]+)+(?:/\\S*)?)") { _, c in
             c["url"].map { Step(.openURL, text: $0) }
         },
-        Pattern("(?:open|launch|start|switch to|show|bring up) (?:the |my )?(?<app>.+?)(?: app)?") { p, c in
+        Pattern("(?:open|launch|start|switch to|show|bring up|pull up) (?:the |my )?(?<app>.+?)(?: app)?") { p, c in
             p.appStep(c["app"])
         },
         Pattern("(?<app>.+?) (?:kholo|khol do|open karo|open kar do|chalu karo|start karo)") { p, c in
