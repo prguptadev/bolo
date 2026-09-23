@@ -118,7 +118,6 @@ final class Agent: ObservableObject {
             await startTask?.value
             let heard = await speech.stop()
             if pendingConfirmation != nil {
-                transcript = heard.text
                 await handle(heard)
                 return
             }
@@ -175,19 +174,21 @@ final class Agent: ObservableObject {
     /// `act: false` shows and logs the plan without running it (remote dry runs).
     func handle(_ heard: Heard, act: Bool = true) async {
         let text = heard.text
-        lastUtterance = text
-        transcript = text
         let conf = heard.confidence.map { String(format: "%.2f", $0) } ?? "n/a"
         Log.agent.notice("heard: \(text, privacy: .public) (confidence \(conf, privacy: .public), \(heard.alternatives.count) alternatives)")
-        // The agent asked "say yes": this is the answer.
+        // The agent asked "say yes": this is the answer. The goal stays on the notch.
         if let waiting = pendingConfirmation {
             pendingConfirmation = nil
             confirmationTimeout?.cancel()
             let yes = text.range(of: "^\\W*(yes|yeah|yep|ya|haan|ha|han|ok|okay|sure|go ahead|do it|karo|kar do|theek hai|confirm|allow)\\b", options: [.regularExpression, .caseInsensitive]) != nil
             Log.agent.notice("confirmation: \(yes ? "yes" : "no", privacy: .public)")
+            message = nil
+            set(.working)
             waiting.resume(returning: yes)
             return
         }
+        lastUtterance = text
+        transcript = text
         guard phase != .working else {
             Log.agent.notice("busy: ignored")
             return
@@ -201,7 +202,7 @@ final class Agent: ObservableObject {
                 scheduleHide(after: 4)
                 return
             }
-            await runAgent(goal: text, alreadyDone: [])
+            await runAgent(goal: text, alternatives: heard.alternatives, alreadyDone: [])
             return
         }
         // Not sure it heard right (low confidence, or only a second guess made sense): drafts, not sends.
@@ -250,7 +251,7 @@ final class Agent: ObservableObject {
                 let handOver = ![.sendMessage, .draftMessage, .call].contains(step.action) && !cancelled
                 if handOver, usesAgent {
                     let done = zip(command.steps, results).map { "\($0.summary) → \($1)" }
-                    await runAgent(goal: text, alreadyDone: done)
+                    await runAgent(goal: text, alternatives: heard.alternatives, alreadyDone: done)
                     return
                 }
                 conversation.record(utterance: text, steps: command.steps, results: results)
@@ -278,7 +279,7 @@ final class Agent: ObservableObject {
     }
 
     /// Anything the phrase rules can't do in one go: the model looks at the screen and works step by step.
-    private func runAgent(goal: String, alreadyDone: [String]) async {
+    private func runAgent(goal: String, alternatives: [String] = [], alreadyDone: [String]) async {
         guard usesAgent else {
             fail("Didn't catch a command, and the brain isn't downloaded (menu bar › Check setup).")
             History.append(utterance: goal, command: nil, results: [])
@@ -305,7 +306,7 @@ final class Agent: ObservableObject {
         }
         loop.onMessage = { [weak self] in self?.message = $0 }
         loop.confirm = { [weak self] _ in await self?.askByVoice() ?? false }
-        let outcome = await loop.run(goal: goal, conversation: conversation, alreadyDone: alreadyDone)
+        let outcome = await loop.run(goal: goal, alternatives: alternatives, conversation: conversation, alreadyDone: alreadyDone)
         conversation.record(utterance: goal, did: alreadyDone + outcome.did)
         History.append(utterance: goal, command: nil, results: alreadyDone + outcome.did + [outcome.message ?? ""])
         message = outcome.message
@@ -344,6 +345,11 @@ final class Agent: ObservableObject {
             return nil
         }
         if let (command, index) = parser.parse(candidates: heard.candidates) {
+            // "search for echo dot" while on a shop: that's the site's search box, not Google.
+            if usesAgent, await Self.isSiteSearch(command, heard.text) {
+                Log.agent.notice("search while on a site: agent")
+                return nil
+            }
             if index > 0 {
                 usedAlternative = true
                 Log.agent.notice("used alternative #\(index): \(command.utterance, privacy: .public)")
@@ -367,6 +373,27 @@ final class Agent: ObservableObject {
         }
         if usesAgent { return nil }
         return try? await planner?.plan(text)
+    }
+
+    /// A bare "search for X" (no engine named) with a browser in front that isn't on a search engine.
+    private static func isSiteSearch(_ command: Command, _ text: String) async -> Bool {
+        guard command.steps.count == 1, command.steps[0].action == .webSearch,
+            text.range(of: "\\b(google|youtube|web|internet|online|browser|chrome|safari|duckduckgo|bing)\\b", options: [.regularExpression, .caseInsensitive]) == nil,
+            let b = BrowserControl.browser(for: MacControl.frontmostBundleID()),
+            let url = await BrowserControl.currentURL(b), let host = URL(string: url)?.host?.lowercased()
+        else { return false }
+        return !["google.", "bing.", "duckduckgo.", "ecosia.", "youtube."].contains { host.contains($0) }
+    }
+
+    /// The `--remote --observe "App"` debug dump: what the agent would see in that app, to a file.
+    func observe(app name: String) async {
+        let apps = NSWorkspace.shared.runningApplications.filter { $0.activationPolicy == .regular }
+        let key = name.lowercased()
+        let target = apps.first { $0.localizedName?.lowercased() == key } ?? apps.first { ($0.localizedName?.lowercased() ?? "").hasPrefix(key) }
+        let started = Date()
+        let snap = await Observer.snapshot(target: target, goal: "read what's on the screen")
+        let text = "\(target == nil ? "(front app)" : name) in \(Int(Date().timeIntervalSince(started) * 1000)) ms, \(snap.observation.elements.count) elements; \(snap.stats)\n\n" + snap.observation.render()
+        try? text.write(to: Settings.folder.appendingPathComponent("observe.txt"), atomically: true, encoding: .utf8)
     }
 
     /// Points at a thing: "that page", "there", "it", "him". Stronger than `refersToContext`.

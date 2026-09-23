@@ -38,30 +38,35 @@ public struct Observation: Sendable {
     public var note: String?
     /// macOS itself is asking the user something (a permission prompt): the agent must stop.
     public var systemDialog = false
+    /// Plain text on the page or window, for context and for reading tasks.
+    public var text: String?
 
     public init(app: String) {
         self.app = app
     }
 
-    public func render() -> String {
+    /// Compact on purpose: every bracket and quote is a token, and the model reads this each step.
+    /// `menus` are only worth sending when the app changed.
+    public func render(includeMenus: Bool = true) -> String {
         var lines = ["App: \(app)"]
-        if let window { lines.append("Window: \(Conversation.short(window, 120))") }
-        if let url { lines.append("Page: \(Conversation.short(url, 160))") }
+        if let window { lines.append("Window: \(Conversation.short(window, 100))") }
+        if let url { lines.append("Page: \(Conversation.short(url, 140))") }
         if let document { lines.append("Open file: \(document)") }
-        if let focused { lines.append("Focused: \(Conversation.short(focused, 140))") }
-        if !menus.isEmpty { lines.append("Menus: " + menus.joined(separator: ", ")) }
+        if let focused { lines.append("Focused: \(Conversation.short(focused, 120))") }
+        if includeMenus, !menus.isEmpty { lines.append("Menus: " + menus.joined(separator: ", ")) }
         if let note { lines.append("Note: \(note)") }
         if elements.isEmpty {
             lines.append("Screen: nothing readable in this window.")
         } else {
-            lines.append("Screen (id, kind, label):")
+            lines.append("Screen (id kind label):")
             for e in elements {
-                var line = "[\(e.id)] \(e.role) \"\(Conversation.short(e.label, 70))\""
-                if let v = e.value, !v.isEmpty, v != e.label { line += " = \"\(Conversation.short(v, 60))\"" }
+                var line = "\(e.id) \(e.role) \(Conversation.short(e.label, 60))"
+                if let v = e.value, !v.isEmpty, v != e.label { line += " = \(Conversation.short(v, 50))" }
                 lines.append(line)
             }
             if hidden > 0 { lines.append("(\(hidden) more not listed: scroll, or use a menu or shortcut)") }
         }
+        if let text, !text.isEmpty { lines.append("Text on screen: \(text)") }
         return lines.joined(separator: "\n")
     }
 }
@@ -70,7 +75,7 @@ public struct Observation: Sendable {
 public struct AgentAction: Sendable, Equatable {
     public enum Tool: String, Sendable, CaseIterable {
         case openApp = "open_app", openURL = "open_url", openFile = "open_file"
-        case click, fill, type, key, menu, scroll, wait
+        case click, fill, type, key, menu, scroll, wait, tab
         case shell, listFiles = "list_files", readFile = "read_file", writeFile = "write_file"
         case message, call, note, reminder, system, remember, lookup, done, ask
     }
@@ -96,6 +101,15 @@ public struct AgentAction: Sendable, Equatable {
     public var op: String?
     /// The model says this action finishes the goal: don't ask it again afterwards.
     public var last = false
+    /// open_url: in a new browser tab instead of the one in front.
+    public var newTab = false
+
+    /// Same action, whatever the model was thinking: repeating it won't help.
+    public static func == (a: AgentAction, b: AgentAction) -> Bool {
+        a.tool == b.tool && a.id == b.id && a.label == b.label && a.text == b.text && a.app == b.app && a.url == b.url
+            && a.path == b.path && a.keys == b.keys && a.command == b.command && a.contact == b.contact
+            && a.direction == b.direction && a.time == b.time && a.op == b.op && a.newTab == b.newTab
+    }
 
     public init(_ tool: Tool, id: Int? = nil, label: String? = nil, text: String? = nil, app: String? = nil, url: String? = nil,
                 path: String? = nil, keys: String? = nil, command: String? = nil, contact: String? = nil) {
@@ -123,7 +137,7 @@ public struct AgentAction: Sendable, Equatable {
         "set_value": .fill, "type_into": .fill, "input": .fill, "enter_text": .fill, "fill_field": .fill,
         "type_text": .type, "write_text": .type, "paste": .type,
         "press": .key, "press_key": .key, "hotkey": .key, "shortcut": .key, "keys": .key,
-        "menu_click": .menu, "choose_menu": .menu,
+        "menu_click": .menu, "choose_menu": .menu, "switch_tab": .tab, "select_tab": .tab, "goto_tab": .tab, "go_to_tab": .tab, "activate_tab": .tab,
         "sleep": .wait, "pause": .wait,
         "bash": .shell, "terminal": .shell, "run": .shell, "run_command": .shell, "exec": .shell, "command": .shell,
         "ls": .listFiles, "list": .listFiles, "list_dir": .listFiles, "read": .readFile, "cat": .readFile,
@@ -182,6 +196,8 @@ public struct AgentAction: Sendable, Equatable {
         a.time = str("time", "when", "at")
         a.op = str("op", "operation", "system_action")
         a.last = ["last", "final_step", "finish", "done", "then_done"].contains { (dict[$0] as? Bool) == true }
+        a.newTab = ["new_tab", "newTab", "new_window"].contains { (dict[$0] as? Bool) == true }
+        if a.id == nil, tool == .tab, let s = str("tab", "number", "n") { a.id = Int(s.filter(\.isNumber)) }
 
         // Fill in the obvious field from the generic one.
         switch tool {
@@ -212,6 +228,7 @@ public struct AgentAction: Sendable, Equatable {
         case .key: return has(keys)
         case .menu: return has(label)
         case .scroll, .wait: return true
+        case .tab: return id != nil
         case .shell: return has(command)
         case .writeFile: return has(path) && text != nil
         case .message: return has(contact) && has(text)
@@ -275,6 +292,7 @@ public struct AgentAction: Sendable, Equatable {
         case .key: return "Press \(KeyCombo.canonical(keys ?? "") ?? keys ?? "")"
         case .menu: return "Menu \(label?.replacingOccurrences(of: ">", with: "›") ?? "")"
         case .scroll: return "Scroll \(direction ?? "down")"
+        case .tab: return "Tab \(id ?? 0)"
         case .wait: return "Wait"
         case .shell: return "Run `\(Conversation.short(command ?? "", 60))`"
         case .listFiles: return "List \(path ?? "folder")"
@@ -331,7 +349,7 @@ public struct AgentAction: Sendable, Equatable {
     public func risk(inChatApp: Bool = false) -> Risk {
         switch tool {
         case .done, .ask, .wait, .readFile, .listFiles, .lookup: return .read
-        case .openApp, .openURL, .openFile, .scroll: return .navigate
+        case .openApp, .openURL, .openFile, .scroll, .tab: return .navigate
         case .note, .reminder, .remember: return .write
         case .call: return .send
         case .system: return Step(.system, app: app, text: text, target: op).risk
@@ -489,13 +507,13 @@ public enum AppHints {
         }
         if browsers.contains(id) {
             return """
-                Web browser. Go to a site: open_url with its address. Web search: open_url https://www.google.com/search?q=… . \
-                The screen list is the page's links, buttons, tabs and fields: click and fill them by id. New tab: key cmd+t. \
-                Back: key cmd+[. Reload: key cmd+r.
+                Web browser. Go to a site: open_url with its address (same tab). The screen list is the page's links, buttons, \
+                tabs and fields: click and fill them by id; a site's search box is a field in that list. Web search only when \
+                asked: open_url https://www.google.com/search?q=… . Other tabs: the tab tool. Back: key cmd+[. Close tab: key cmd+w.
                 """
         }
         if id == "com.apple.Terminal" || id == "com.googlecode.iterm2" {
-            return "Terminal. Use the shell tool: the command runs in this Terminal window and you get its output."
+            return "Terminal is open, but you don't need it: the shell tool runs commands and returns their output."
         }
         if id == "com.apple.finder" {
             return "Finder. Prefer list_files, open_file and shell (mkdir, mv, cp, trash) over clicking."
@@ -504,7 +522,7 @@ public enum AppHints {
             return "Notes. New note: key cmd+n, then type."
         }
         if id == "com.apple.mail" || id == "com.microsoft.Outlook" {
-            return "Mail. New email: key cmd+n; fill To and Subject by id; type the body. Leave it as a draft unless the user said send."
+            return "Mail. New email: key cmd+n; fill To and Subject by id; click the message body, then type it. Leave it as a draft unless the user said send."
         }
         if chatApps.contains(id) {
             return "Chat app. To write to someone use the message tool. Never type into the open chat."
@@ -527,7 +545,8 @@ public enum AgentPrompt {
 
         Actions:
         {"thought":"…","tool":"open_app","app":"Google Chrome"}
-        {"thought":"…","tool":"open_url","url":"https://mail.google.com"}
+        {"thought":"…","tool":"open_url","url":"https://example.com"}   (goes there in the browser tab in front; add "new_tab":true for a new tab)
+        {"thought":"…","tool":"tab","id":2}   (switch to browser tab 2, from the Tabs list)
         {"thought":"…","tool":"click","id":12}   (a number from the screen list; or "label":"Save" when it isn't listed)
         {"thought":"…","tool":"fill","id":7,"text":"hello"}   (sets a field's text)
         {"thought":"…","tool":"type","text":"…"}   (types at the cursor: code or text in an editor)
@@ -535,7 +554,7 @@ public enum AgentPrompt {
         {"thought":"…","tool":"menu","label":"File > New > Java Class"}
         {"thought":"…","tool":"scroll","direction":"down"}
         {"thought":"…","tool":"wait","seconds":2}
-        {"thought":"…","tool":"shell","command":"ls -la"}   (zsh; the folder is kept between commands)
+        {"thought":"…","tool":"shell","command":"ls -la"}   (runs it for you in zsh and returns the output; never open the Terminal app)
         {"thought":"…","tool":"list_files","path":"~/Developer"}
         {"thought":"…","tool":"read_file","path":"~/notes/todo.txt"}
         {"thought":"…","tool":"write_file","path":"~/project/src/Hello.java","text":"<the whole file>"}   (new files only)
@@ -551,24 +570,43 @@ public enum AgentPrompt {
         {"thought":"…","tool":"ask","text":"<a short question>"}
 
         How to work:
-        - Read the screen list first and use element numbers as id. If what you need isn't listed, scroll, use a menu, or a shortcut.
+        - Read the screen list first and use element numbers as id. Never use an id that isn't in the list; if the list is \
+        empty or lacks what you need, scroll, use a menu, a key, or open_url.
+        - To search inside the site or app in front, use its own search field: fill it, then key return. Google is \
+        only for searching the web, when the user asks for that. Stay in the tab you're in unless asked for a new one.
+        - Once open_url has opened a page, work on that page; don't open it again another way.
         - Take the direct way: open_url for websites, write_file then open_file for a new file with content, shell for terminal work, \
         message for chats, a menu rather than hunting for a button.
         - After typing into a search or address box, press return.
+        - "type" goes where the cursor is. To write in a message body or editor, click that area (it's in the list) first.
+        - "new" means new: a new email, message, note, document or tab starts with cmd+n (or cmd+t), even if a similar \
+        window is already open. Never reuse or overwrite something the user was already writing.
+        - Dictated addresses have no spaces: "pr.gupta 1993@gmail.com" is pr.gupta1993@gmail.com; "amazon dot in" is amazon.in.
         - One action per reply. Check the next screen before moving on. If something failed, try another way; never repeat a failed action.
         - "it", "him", "that file", "there" refer to the earlier conversation and the screen.
         - Do only what was asked, then reply done. Never add steps the user didn't ask for: no saving, closing, \
         sending, submitting or "tidying up". "Type hello" ends after the typing.
         - Never type passwords, codes or card numbers, and never pay or buy. If a login, OTP or payment is needed, ask.
         - To delete files use shell "trash <path>" (it goes to the Bin), never rm.
-        - When the goal is reached, reply done. If the goal was a question, put the answer in done.
+        - When the goal is reached, reply done. If the goal was a question, put the answer in done. If the user wants \
+        to know or list something that's already on the screen (or in the Tabs note), reply done with it; don't click around.
         - If this action alone finishes the goal, add "last": true to it and you won't be asked again.
         - A macOS permission prompt (Allow / Don't Allow) is for the user: reply ask and say so.
         """
     }
 
-    public static func turn(goal: String, context: String, memory: String, screen: String, history: [String], step: Int, maxSteps: Int, hints: String?) -> String {
+    /// Every step after the first: only what's new. The session remembers the goal and earlier steps.
+    public static func next(result: String, screen: String?, hints: String?, step: Int, maxSteps: Int) -> String {
+        var parts = ["Result: \(result)", screen.map { "Screen now:\n" + $0 } ?? "Screen: unchanged."]
+        if let hints { parts.append("Tips for this app: " + hints) }
+        parts.append("Step \(step) of at most \(maxSteps). Reply with one JSON action.")
+        return parts.joined(separator: "\n\n")
+    }
+
+    public static func turn(goal: String, alternatives: [String] = [], context: String, memory: String, screen: String, history: [String], step: Int, maxSteps: Int, hints: String?) -> String {
         var parts = ["Goal: \(goal)"]
+        let others = alternatives.filter { $0 != goal }.prefix(2)
+        if !others.isEmpty { parts.append("(The goal was spoken; the recogniser's other guesses: " + others.map { "\"\($0)\"" }.joined(separator: ", ") + ".)") }
         if !memory.isEmpty { parts.append("What the user asked you to remember:\n" + memory) }
         if !context.isEmpty { parts.append(context) }
         if history.isEmpty {

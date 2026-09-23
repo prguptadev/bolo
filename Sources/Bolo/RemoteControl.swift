@@ -19,14 +19,19 @@ enum RemoteControl {
     }
 
     @MainActor
-    static func listen(_ run: @escaping @MainActor (String, Bool) -> Void) {
+    static func listen(_ run: @escaping @MainActor (String, Bool) -> Void, observe: @escaping @MainActor (String) -> Void) {
         let expected = token()
         DistributedNotificationCenter.default().addObserver(forName: notification, object: nil, queue: .main) { note in
             let info = note.userInfo ?? [:]
-            guard info["token"] as? String == expected, let text = info["text"] as? String, !text.isEmpty else {
+            guard info["token"] as? String == expected else {
                 Log.agent.error("remote command rejected (bad token)")
                 return
             }
+            if let app = info["observe"] as? String {
+                MainActor.assumeIsolated { observe(app) }
+                return
+            }
+            guard let text = info["text"] as? String, !text.isEmpty else { return }
             let dryRun = (info["dryRun"] as? Bool) ?? false
             MainActor.assumeIsolated { run(text, dryRun) }
         }
@@ -36,4 +41,12 @@ enum RemoteControl {
         DistributedNotificationCenter.default().postNotificationName(
             notification, object: nil, userInfo: ["token": token(), "text": text, "dryRun": dryRun], deliverImmediately: true)
     }
+
+    /// Asks the running app to write what the agent sees in `app` ("" = the app in front) to observe.txt.
+    static func sendObserve(_ app: String) {
+        DistributedNotificationCenter.default().postNotificationName(
+            notification, object: nil, userInfo: ["token": token(), "observe": app], deliverImmediately: true)
+    }
+
+    static let observeURL = Settings.folder.appendingPathComponent("observe.txt")
 }

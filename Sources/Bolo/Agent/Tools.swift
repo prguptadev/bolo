@@ -32,7 +32,22 @@ final class Tools {
                 // "open_url gmail": the model named a site, not an address. Let the browser search for it.
                 url = "https://www.google.com/search?q=" + (url.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? url) + "&btnI=1"
             }
+            if !url.lowercased().hasPrefix("http") { url = "https://" + url }
+            // In the browser you're looking at, go there in this tab, like a person would.
+            if let b = snap.browser ?? BrowserControl.browser(for: snap.bundleID) {
+                do {
+                    try await BrowserControl.navigate(to: url, in: b, newTab: a.newTab)
+                    return "Opened \(url)\(a.newTab ? " in a new tab" : "")"
+                } catch {
+                    Log.agent.notice("tab navigation failed, opening normally: \(error.localizedDescription, privacy: .public)")
+                }
+            }
             return try Everyday.openURL(url)
+
+        case .tab:
+            guard let b = snap.browser ?? BrowserControl.browser(for: snap.bundleID) else { throw SkillError.failed("No browser is in front.") }
+            try await BrowserControl.selectTab(a.id ?? 1, in: b)
+            return "Switched to tab \(a.id ?? 1)"
 
         case .openFile:
             let path = expand(a.path ?? "")
@@ -52,7 +67,7 @@ final class Tools {
         case .click:
             if let id = a.id {
                 if let b = snap.browser { return try await BrowserControl.click(id: id, in: b) }
-                guard let el = snap.elements[id] else { throw SkillError.failed("There's no [\(id)] on the screen list. Look again.") }
+                guard let el = snap.elements[id] else { throw SkillError.failed(noSuchID(id, snap)) }
                 guard ScreenControl.press(el) else { throw SkillError.failed("Couldn't press [\(id)].") }
                 return "Clicked \(snap.label(of: id).map { "\"\($0)\"" } ?? "[\(id)]")"
             }
@@ -61,10 +76,14 @@ final class Tools {
             return try ScreenControl.click(label)
 
         case .fill:
-            let text = a.text ?? ""
+            var text = a.text ?? ""
+            // "pr.gupta 1993@gmail.com" was dictated: an address has no spaces.
+            if text.contains("@"), text.range(of: "^[\\w.+\\- ]+@[\\w.\\- ]+$", options: .regularExpression) != nil {
+                text = text.replacingOccurrences(of: " ", with: "")
+            }
             if let id = a.id {
                 if let b = snap.browser { return try await BrowserControl.fill(id: id, text: text, in: b) }
-                guard let el = snap.elements[id] else { throw SkillError.failed("There's no [\(id)] on the screen list. Look again.") }
+                guard let el = snap.elements[id] else { throw SkillError.failed(noSuchID(id, snap)) }
                 if snap.role(of: id) == "password field" { throw SkillError.failed("That's a password field. Bolo never types passwords.") }
                 AXUIElementSetAttributeValue(el, kAXFocusedAttribute as CFString, kCFBooleanTrue)
                 if AXUIElementSetAttributeValue(el, kAXValueAttribute as CFString, text as CFString) != .success {
@@ -89,7 +108,21 @@ final class Tools {
             return try ScreenControl.pressKey(normalizeKeys(a.keys ?? ""))
 
         case .menu:
-            return try ScreenControl.menu(a.label ?? "")
+            let label = a.label ?? ""
+            do {
+                return try ScreenControl.menu(label)
+            } catch {
+                // Tell the model what that menu really holds, so it stops guessing item names.
+                let top = label.components(separatedBy: CharacterSet(charactersIn: ">›")).first?.trimmingCharacters(in: .whitespaces) ?? ""
+                if let front = try? ScreenControl.front() {
+                    let items = ScreenControl.menuItems(front.element).filter { $0.path.count == 2 && $0.path[0].lowercased() == top.lowercased() }.map(\.title)
+                    if !items.isEmpty { throw SkillError.failed("\(error.localizedDescription) The \(top) menu has: \(items.prefix(25).joined(separator: ", ")).") }
+                    let menus = ScreenControl.menuItems(front.element).map { $0.path[0] }
+                    let names = Array(NSOrderedSet(array: menus)) as? [String] ?? []
+                    throw SkillError.failed("\(error.localizedDescription) Menus: \(names.joined(separator: ", ")).")
+                }
+                throw error
+            }
 
         case .scroll:
             let dir = a.direction ?? "down"
@@ -216,6 +249,11 @@ final class Tools {
         let shown = text.count > 3000 ? String(text.prefix(1500)) + "\n…\n" + String(text.suffix(1200)) : text
         if status != 0 { return "exit \(status)" + (shown.isEmpty ? "" : ": " + shown) }
         return shown.isEmpty ? "Done (no output)" : shown
+    }
+
+    private func noSuchID(_ id: Int, _ snap: Observer.Snapshot) -> String {
+        let n = snap.observation.elements.count
+        return n == 0 ? "The screen list is empty, so there's no [\(id)]. Use a menu, a key or open_url." : "There's no [\(id)]; the list has 1–\(n). Look again."
     }
 
     private func expand(_ path: String) -> String {

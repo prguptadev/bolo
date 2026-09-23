@@ -121,10 +121,13 @@ import Testing
     @Test func rendersScreenCompactly() {
         var o = Observation(app: "Google Chrome")
         o.url = "https://mail.google.com/mail/u/0/#inbox"
-        o.elements = [ScreenElement(id: 1, role: "tab", label: "Updates"), ScreenElement(id: 2, role: "text field", label: "Search mail", value: "")]
+        o.elements = [ScreenElement(id: 1, role: "tab", label: "Updates"), ScreenElement(id: 2, role: "field", label: "Search mail", value: "")]
+        o.menus = ["File", "Edit"]
         let text = o.render()
-        #expect(text.contains("[1] tab \"Updates\""))
+        #expect(text.contains("1 tab Updates"))
         #expect(text.contains("Page: https://mail.google.com"))
+        #expect(!o.render(includeMenus: false).contains("Menus:"))
+        #expect(AgentPrompt.next(result: "ok", screen: nil, hints: nil, step: 2, maxSteps: 5).contains("Screen: unchanged."))
     }
 }
 
@@ -135,5 +138,43 @@ import Testing
         #expect(AgentAction(.click, label: "Open System Settings").forbidden() != nil)
         #expect(AgentAction(.click, label: "Allow notifications from this site?").forbidden() == nil)
         #expect(AgentAction(.click, label: "Updates").forbidden() == nil)
+    }
+}
+
+@Suite struct TabsAndRepeats {
+    @Test func sameActionDifferentThoughtIsARepeat() {
+        var a = AgentAction(.click, id: 1)
+        a.thought = "first try"
+        var b = AgentAction(.click, id: 1)
+        b.thought = "let me try the link"
+        #expect(a == b)
+        #expect(AgentAction(.click, id: 1) != AgentAction(.click, id: 2))
+    }
+
+    @Test func tabTool() {
+        let t = AgentAction.parse(#"{"tool":"switch_tab","tab":2}"#)
+        #expect(t?.tool == .tab)
+        #expect(t?.id == 2)
+        #expect(t?.risk() == .navigate)
+        let u = AgentAction.parse(#"{"tool":"open_url","url":"https://amazon.in","new_tab":true}"#)
+        #expect(u?.newTab == true)
+        #expect(AgentAction.parse(#"{"tool":"tab"}"#) == nil)
+    }
+
+    @Test func alternativesReachThePrompt() {
+        let p = AgentPrompt.turn(goal: "search for alexa", alternatives: ["search for alexa", "such for alexa"], context: "", memory: "", screen: "", history: [], step: 1, maxSteps: 5, hints: nil)
+        #expect(p.contains("other guesses"))
+        #expect(p.contains("such for alexa"))
+        #expect(!p.contains("\"search for alexa\","))
+    }
+}
+
+@Suite struct SystemOpGrounding {
+    @Test func everyOpNeedsAWordFromTheSentence() {
+        for op in SystemOp.allCases { #expect(op.mustHear != nil, "\(op)") }
+        let wrong = Command(utterance: "count how many files are on my Desktop", steps: [Step(.system, target: "diskSpace")], source: .qwen)
+        #expect(Grounding.filter(wrong) == nil)
+        let right = Command(utterance: "how much disk space is left", steps: [Step(.system, target: "diskSpace")], source: .qwen)
+        #expect(Grounding.filter(right)?.steps.count == 1)
     }
 }

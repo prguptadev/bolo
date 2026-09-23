@@ -174,7 +174,11 @@ enum BrowserControl {
         guard let out = try? await MacControl.appleScript(script) else { return [] }
         var lines = out.components(separatedBy: "\n")
         guard let active = Int(lines.removeFirst().trimmingCharacters(in: .whitespaces)) else { return [] }
-        return lines.enumerated().map { "\($0.offset + 1). \(Conversation.short($0.element, 50))\($0.offset + 1 == active ? " (this tab)" : "")" }
+        let all = lines.enumerated().map { "\($0.offset + 1). \(Conversation.short($0.element, 40))\($0.offset + 1 == active ? " (this tab)" : "")" }
+        guard all.count > 15 else { return all }
+        // 50 open tabs would drown the prompt: the ones around the current tab, and the count.
+        let lo = max(0, min(active - 8, all.count - 15)), hi = min(all.count, lo + 15)
+        return Array(all[lo..<hi]) + ["(\(all.count) tabs in all)"]
     }
 
     // MARK: Acting on the page
@@ -282,6 +286,57 @@ enum BrowserControl {
     static func jsString(_ s: String) -> String {
         let data = (try? JSONEncoder().encode(s)) ?? Data("\"\"".utf8)
         return String(decoding: data, as: UTF8.self)
+    }
+}
+
+extension BrowserControl {
+    /// The page the front window is on. AppleScript only: no JavaScript switch needed.
+    static func currentURL(_ b: Browser) async -> String? {
+        let script = switch b {
+        case .chromium(let app): "tell application \(MacControl.quoted(app)) to get URL of active tab of front window"
+        case .safari: "tell application \"Safari\" to get URL of current tab of front window"
+        }
+        return (try? await MacControl.appleScript(script))?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+    }
+
+    static func isLoading(_ b: Browser) async -> Bool {
+        switch b {
+        case .chromium(let app):
+            return (try? await MacControl.appleScript("tell application \(MacControl.quoted(app)) to get loading of active tab of front window")) == "true"
+        case .safari:
+            guard !isScriptingOff(b), let state = try? await run("document.readyState", in: b) else { return false }
+            return state != "complete"
+        }
+    }
+
+    /// Goes to `url` in the tab you're looking at (or a new one). That's what a person would do;
+    /// opening through the system always makes a new tab.
+    static func navigate(to url: String, in b: Browser, newTab: Bool) async throws {
+        let u = MacControl.quoted(url)
+        let script = switch (b, newTab) {
+        case (.chromium(let app), false): "tell application \(MacControl.quoted(app)) to set URL of active tab of front window to \(u)"
+        case (.chromium(let app), true): "tell application \(MacControl.quoted(app)) to tell front window to make new tab with properties {URL:\(u)}"
+        case (.safari, false): "tell application \"Safari\" to set URL of current tab of front window to \(u)"
+        case (.safari, true): "tell application \"Safari\" to tell front window to make new tab with properties {URL:\(u)}"
+        }
+        try await MacControl.appleScript(script)
+    }
+
+    static func selectTab(_ n: Int, in b: Browser) async throws {
+        let script = switch b {
+        case .chromium(let app): "tell application \(MacControl.quoted(app)) to set active tab index of front window to \(n)"
+        case .safari: "tell application \"Safari\" to tell front window to set current tab to tab \(n)"
+        }
+        try await MacControl.appleScript(script)
+    }
+
+    /// The page's visible text, for reading and summarising.
+    static func pageText(_ b: Browser, limit: Int) async throws -> String? {
+        let js = """
+            (() => { const m = document.querySelector('main, article, [role=main]') || document.body;
+              return (m.innerText || '').replace(/\\s+/g, ' ').trim().slice(0, \(limit)); })()
+            """
+        return try await run(js, in: b).nilIfEmpty
     }
 }
 

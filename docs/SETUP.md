@@ -137,6 +137,12 @@ Hold the **right ⌥** key, speak, release. Stop anything with **Esc**.
 | 13 | "list the files in my Downloads folder" | The agent runs `ls` and reads the names in the notch |
 | 14 | "delete the oldest file there" | Standard level: the notch asks you to say "yes"; the file goes to the Bin |
 
+See exactly what the agent sees in an app (the numbered screen list it works from):
+
+```bash
+~/Applications/Bolo.app/Contents/MacOS/Bolo --observe "Google Chrome"
+```
+
 Check how a sentence is understood without acting on it:
 
 ```bash

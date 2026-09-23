@@ -1,8 +1,12 @@
+import AppKit
 import BoloCore
 import Foundation
 
 /// The agent loop: look → decide one action → check permission → act → look again, until the model
 /// says done, asks something, hits the step limit, or you press Esc.
+///
+/// One chat session per task: the system prompt and earlier steps stay in the model's cache, so each
+/// step only feeds the new screen (about a third of the time of re-sending everything).
 @MainActor
 final class AgentLoop {
     struct Outcome {
@@ -27,6 +31,11 @@ final class AgentLoop {
     /// Asks you (by voice) to allow something. Returns false on "no" or silence.
     var confirm: (String) async -> Bool = { _ in false }
 
+    /// Tools whose effect lands in whatever app has the keyboard or is in front.
+    private static let needsFront: Set<AgentAction.Tool> = [.click, .fill, .type, .key, .menu, .scroll, .tab]
+    /// Tools that may legitimately change which app the agent works in.
+    private static let mayChangeApp: Set<AgentAction.Tool> = [.openApp, .openFile, .openURL, .system, .message, .call, .note, .reminder]
+
     init(brain: Brain, tools: Tools, level: PermissionLevel, maxSteps: Int, irreversibleDelay: Double) {
         self.brain = brain
         self.tools = tools
@@ -35,17 +44,33 @@ final class AgentLoop {
         self.irreversibleDelay = irreversibleDelay
     }
 
-    func run(goal: String, conversation: Conversation, alreadyDone: [String] = []) async -> Outcome {
+    func run(goal: String, alternatives: [String] = [], conversation: Conversation, alreadyDone: [String] = []) async -> Outcome {
         var outcome = Outcome()
         var history = alreadyDone
         var lastAction: AgentAction?
         var lastFailed = false
         var repeats = 0
         var unreadable = 0
+        /// The app the agent works in. If you switch to another app meanwhile, the agent keeps
+        /// looking at (and returns to) this one instead of following you around.
+        var working = MacControl.frontApp()
+        var lastBundle: String?
+        var lastScreen: String?
+        /// What to tell the model about the previous step (nil on the first step).
+        var result: String?
         let memory = Memory.read()
         let context = conversation.render()
         let said = conversation.recentUtterances
         Log.agent.notice("agent goal: \(goal, privacy: .public) (\(self.brain.name, privacy: .public), level \(self.level.rawValue, privacy: .public))")
+
+        onMessage("Thinking…")
+        let session: BrainSession
+        do {
+            session = try await brain.startTask(system: AgentPrompt.system, maxTokens: 1200)
+        } catch {
+            outcome.message = "The brain failed: \(error.localizedDescription)"
+            return outcome
+        }
 
         for step in 1...max(1, maxSteps) {
             if isCancelled() {
@@ -53,20 +78,32 @@ final class AgentLoop {
                 break
             }
             onMessage(step == 1 ? "Looking at the screen…" : "Thinking…")
-            let snap = await Observer.snapshot()
+            if let w = working, w.isTerminated { working = MacControl.frontApp() }
+            let snap = await Observer.snapshot(target: working, goal: goal)
+            Log.agent.notice("screen: \(Conversation.short(snap.observation.render(), 700), privacy: .public)")
             if snap.observation.systemDialog {
                 outcome.message = "macOS is asking you for a permission. Answer it, then say it again."
                 Log.agent.notice("stopped: system permission prompt in front")
                 break
             }
-            let hints = Skills.hints(app: snap.observation.app, bundleID: snap.bundleID)
-            let prompt = AgentPrompt.turn(
-                goal: goal, context: context, memory: memory, screen: snap.observation.render(), history: history,
-                step: step, maxSteps: maxSteps, hints: hints)
+            let appChanged = snap.bundleID != lastBundle
+            lastBundle = snap.bundleID
+            let hints = appChanged ? Skills.hints(app: snap.observation.app, bundleID: snap.bundleID) : nil
+            let screen = snap.observation.render(includeMenus: appChanged)
+            let prompt: String
+            if let result {
+                // A shell command or a file write rarely changes the window: don't resend it.
+                prompt = AgentPrompt.next(result: result, screen: screen == lastScreen ? nil : screen, hints: hints, step: step, maxSteps: maxSteps)
+            } else {
+                prompt = AgentPrompt.turn(
+                    goal: goal, alternatives: alternatives, context: context, memory: memory, screen: snap.observation.render(),
+                    history: history, step: step, maxSteps: maxSteps, hints: hints)
+            }
+            lastScreen = screen
             let reply: String
             let started = Date()
             do {
-                reply = try await brain.respond(system: AgentPrompt.system, prompt: prompt, maxTokens: 1200)
+                reply = try await session.respond(prompt)
             } catch {
                 outcome.message = "The brain failed: \(error.localizedDescription)"
                 Log.agent.error("brain failed: \(error.localizedDescription, privacy: .public)")
@@ -75,7 +112,7 @@ final class AgentLoop {
             Log.agent.notice("step \(step) (\(Int(Date().timeIntervalSince(started) * 1000)) ms, \(prompt.count) chars in): \(Conversation.short(reply, 400), privacy: .public)")
             guard let action = AgentAction.parse(reply) else {
                 unreadable += 1
-                history.append("(your reply wasn't a valid action JSON; reply with exactly one JSON object)")
+                result = "That wasn't a valid action. Reply with exactly one JSON object, nothing else."
                 if unreadable >= 2 {
                     outcome.message = "I couldn't work out a next step for that."
                     break
@@ -99,7 +136,7 @@ final class AgentLoop {
             if let last = lastAction, last == action {
                 repeats += 1
                 if lastFailed || repeats >= 2 {
-                    history.append("(you repeated the same action; it didn't help. Try a different way or reply ask)")
+                    result = "You repeated \(action.summary) and it didn't help. Do something different, or reply ask."
                     if repeats >= 3 {
                         outcome.message = "I kept trying the same thing without progress, so I stopped."
                         break
@@ -113,7 +150,8 @@ final class AgentLoop {
 
             // Never, at any level.
             if let why = action.forbidden(elementRole: action.id.flatMap { snap.role(of: $0) }) {
-                history.append("\(action.summary) → refused: \(why)")
+                result = "\(action.summary) → refused: \(why)"
+                history.append(result!)
                 onRow("\(action.summary) · \(why)", .failed, false)
                 lastFailed = true
                 continue
@@ -124,11 +162,13 @@ final class AgentLoop {
             if action.tool == .writeFile, let p = action.path, FileManager.default.fileExists(atPath: (p as NSString).expandingTildeInPath) {
                 risk = .destructive  // overwriting
             }
-            switch AgentPolicy.verdict(risk, level: level) {
+            let verdict = AgentPolicy.verdict(risk, level: level)
+            switch verdict {
             case .allow:
                 break
             case .deny(let why):
-                history.append("\(action.summary) → not allowed: \(why)")
+                result = "\(action.summary) → not allowed: \(why)"
+                history.append(result!)
                 onRow("\(action.summary) · not allowed at this permission level", .failed, false)
                 lastFailed = true
                 continue
@@ -154,17 +194,23 @@ final class AgentLoop {
             }
             if outcome.message != nil { break }
 
-            onRow(action.summary, .running, [.confirm, .countdown].contains(AgentPolicy.verdict(risk, level: level)))
+            // Keys, typing and clicks go to the app in front: make sure that's the one we're working in.
+            if Self.needsFront.contains(action.tool), let w = working, !w.isActive {
+                w.activate()
+                try? await Task.sleep(for: .milliseconds(500))
+            }
+            onRow(action.summary, .running, verdict != .allow)
             do {
-                let result = try await tools.run(action, seeing: snap, goal: goal, said: said)
+                let output = try await tools.run(action, seeing: snap, goal: goal, said: said)
                 let shown = action.tool == .readFile || action.tool == .shell || action.tool == .listFiles
-                    ? action.summary + " · " + Conversation.short(result.split(separator: "\n").first.map(String.init) ?? "done", 70)
-                    : Conversation.short(result, 110)
+                    ? action.summary + " · " + Conversation.short(output.split(separator: "\n").first.map(String.init) ?? "done", 70)
+                    : Conversation.short(output, 110)
                 onRow(shown, .ok, true)
-                history.append("\(action.summary) → \(Conversation.short(result, 1500))")
-                outcome.did.append(Conversation.short("\(action.summary) → \(result)", 200))
+                result = "\(action.summary) → \(Conversation.short(output, 1500))"
+                history.append(result!)
+                outcome.did.append(Conversation.short("\(action.summary) → \(output)", 200))
                 lastFailed = false
-                Log.skills.notice("agent ok: \(Conversation.short(result, 200), privacy: .public)")
+                Log.skills.notice("agent ok: \(Conversation.short(output, 200), privacy: .public)")
                 if action.last {
                     outcome.finished = true
                     outcome.message = nil
@@ -172,14 +218,19 @@ final class AgentLoop {
                 }
             } catch {
                 onRow("\(action.summary) · \(error.localizedDescription)", .failed, true)
-                history.append("\(action.summary) → failed: \(error.localizedDescription)")
+                result = "\(action.summary) → failed: \(error.localizedDescription)"
+                history.append(result!)
                 outcome.did.append("\(action.summary) → failed: \(Conversation.short(error.localizedDescription, 120))")
                 lastFailed = true
                 Log.skills.error("agent failed: \(action.summary, privacy: .public): \(error.localizedDescription, privacy: .public)")
             }
             // Let the app catch up before looking again.
-            let settle: Double = [.openApp, .openURL, .openFile].contains(action.tool) ? 1.5 : [.click, .key, .menu].contains(action.tool) ? 0.7 : 0.2
+            let settle: Double = [.openApp, .openURL, .openFile].contains(action.tool) ? 1.5 : [.click, .key, .menu, .tab].contains(action.tool) ? 0.7 : 0.2
             try? await Task.sleep(for: .seconds(settle))
+            // Our own action opened or switched to another app: work there from now on.
+            if Self.mayChangeApp.contains(action.tool), let front = MacControl.frontApp(), front.processIdentifier != working?.processIdentifier {
+                working = front
+            }
         }
         if outcome.message == nil, !outcome.finished {
             outcome.message = "Reached \(maxSteps) steps. Say what to do next."

@@ -40,6 +40,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return }
             Log.agent.notice("remote: \(text, privacy: .public)\(dryRun ? " (dry run)" : "", privacy: .public)")
             Task { await self.agent.handleRemote(text, act: !dryRun) }
+        } observe: { [weak self] app in
+            guard let self else { return }
+            Task { await self.agent.observe(app: app) }
         }
     }
 

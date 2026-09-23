@@ -7,6 +7,7 @@ import Foundation
 // Bolo --doctor                                       -> what this Mac still needs
 // Bolo --listen [seconds] [--no-noise]                -> live transcript in Terminal; shows what Bolo would do
 // Bolo --remote "sentence" [--dry-run]                -> run it inside the running Bolo.app (token-protected)
+// Bolo --observe ["App name"]                          -> print what the agent sees in that app (via the running Bolo.app)
 // Bolo --batch prompts.jsonl [--names a,b] [--no-model] -> understand each {"id","say"} line, print JSONL (never acts)
 let args = CommandLine.arguments
 
@@ -87,6 +88,19 @@ if let path = value(after: "--batch") {
         exit(1)
     }
     RunLoop.main.run()
+} else if args.contains("--observe") {
+    // What the agent sees in an app right now:  Bolo --observe "Google Chrome"   (no name = the app in front)
+    let app = value(after: "--observe").flatMap { $0.hasPrefix("--") ? nil : $0 } ?? ""
+    try? FileManager.default.removeItem(at: RemoteControl.observeURL)
+    RemoteControl.sendObserve(app)
+    let deadline = Date().addingTimeInterval(20)
+    while Date() < deadline, !FileManager.default.fileExists(atPath: RemoteControl.observeURL.path) { usleep(200_000) }
+    if let text = try? String(contentsOf: RemoteControl.observeURL, encoding: .utf8) {
+        print(text)
+        exit(0)
+    }
+    print("No answer from Bolo.app. Is it running?")
+    exit(1)
 } else if let text = value(after: "--remote") {
     // Runs a sentence inside the running Bolo.app, with its permissions, as if spoken.
     RemoteControl.send(text, dryRun: args.contains("--dry-run"))

@@ -15,17 +15,39 @@ public enum SystemOp: String, Codable, Sendable, CaseIterable {
     /// Just reports something in the notch.
     public var answersOnly: Bool { [.battery, .diskSpace, .ipAddress, .time, .date, .clipboard].contains(self) }
 
-    /// Words the user must have said before a model may choose this (risky operations only).
+    /// Words the user must have said before a model may choose this. Measured: Qwen turned "count
+    /// the files on my Desktop" into diskSpace; a word from the sentence has to back every op.
     public var mustHear: String? {
         switch self {
         case .emptyTrash: "trash|bin|dustbin|recycle"
+        case .openTrash: "trash|bin|dustbin"
+        case .openFolder: "folder|downloads|desktop|documents|applications|home"
+        case .newFolder: "folder"
+        case .ejectAll: "eject|disk|drive|usb|pen ?drive"
         case .restart: "restart|reboot|restarts"
         case .shutdown: "shut|power off|turn off the (?:mac|computer|laptop)|band kar"
         case .logout: "log ?out|sign ?out"
         case .sleep: "sleep|so ja"
+        case .darkModeOn, .darkModeOff: "dark|light|appearance|theme"
+        case .screenshot: "screenshot|screen shot|capture|snap"
+        case .brightnessUp, .brightnessDown: "bright|dim|screen"
+        case .wifiOn, .wifiOff: "wi-?fi|internet|network"
+        case .keepAwake, .stopKeepAwake: "awake|sleep|caffeinate"
+        case .battery: "battery|charge|charging"
+        case .diskSpace: "disk|storage|space|gb"
+        case .ipAddress: "\\bip\\b|address"
+        case .time: "time|baje|clock|kitne|samay"
+        case .date: "date|day|today|tarikh|din"
+        case .clipboard, .clearClipboard: "clipboard|copied|paste"
         case .quitApp: "quit|close|band"
-        case .wifiOff: "wi-?fi"
-        default: nil
+        case .hideApp: "hide|chhupa"
+        case .minimize: "minimi[sz]e"
+        case .fullScreen: "full ?screen|maximi[sz]e"
+        case .showDesktop: "desktop"
+        case .missionControl: "mission|windows|expos"
+        case .playPause: "play|pause|resume|song|music|video|gaana"
+        case .nextTrack: "next|skip|agla"
+        case .previousTrack: "previous|back|last|pichla"
         }
     }
 
