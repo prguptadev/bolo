@@ -264,7 +264,7 @@ enum BrowserControl {
             })()
             """
         switch try await run(js, in: b) {
-        case "ok": return "Filled in"
+        case "ok": return "Filled in. If that was a search box, press return."
         case "password": throw PageError.failed("That's a password field. Bolo never types passwords.")
         case "nooption": throw PageError.failed("That list has no option \"\(text)\".")
         default: throw PageError.failed("That field is gone from the page (it changed). Look again.")

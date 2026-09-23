@@ -186,3 +186,12 @@ import Testing
         #expect(Grounding.filter(right)?.steps.count == 1)
     }
 }
+
+@Suite struct Editors {
+    @Test func idesAreEditors() {
+        #expect(AppHints.isEditor("com.jetbrains.intellij"))
+        #expect(AppHints.isEditor("com.microsoft.VSCode"))
+        #expect(!AppHints.isEditor("com.apple.TextEdit"))
+        #expect(!AppHints.isEditor(nil))
+    }
+}

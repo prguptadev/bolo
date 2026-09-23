@@ -92,7 +92,9 @@ final class Tools {
                     _ = try ScreenControl.pressKey("cmd+a")
                     await MacControl.paste(text)
                 }
-                return "Filled \(snap.label(of: id).map { "\"\($0)\"" } ?? "[\(id)]")"
+                let name = snap.label(of: id) ?? ""
+                let searchy = (name + " " + (snap.role(of: id) ?? "")).range(of: "search|find|address|url|omnibox|jump to|go to", options: [.regularExpression, .caseInsensitive]) != nil
+                return "Filled \(name.isEmpty ? "[\(id)]" : "\"\(name)\"")" + (searchy ? ". Press return to search." : "")
             }
             return try await ScreenControl.typeInto(a.label ?? "", text: text)
 
@@ -100,6 +102,11 @@ final class Tools {
             let text = a.text ?? ""
             if let front = MacControl.frontmostBundleID(), AppHints.chatApps.contains(front) {
                 throw SkillError.failed("Won't type into an open chat. Use the message tool with the person's name.")
+            }
+            // Editors auto-indent, auto-close and complete; typed code turns to mush, and a small model
+            // then keeps "finishing" it. Whole files only.
+            if AppHints.isEditor(snap.bundleID ?? MacControl.frontmostBundleID()), text.contains("\n") || text.range(of: "[{};]\\s*$|\\b(class|def|func|public|import|return)\\b", options: .regularExpression) != nil {
+                throw SkillError.failed("Don't type code into an editor. Use write_file with the complete file, then open_file to show it.")
             }
             await MacControl.paste(text)
             return "Typed \(text.count) characters"

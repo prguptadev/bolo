@@ -495,6 +495,16 @@ public enum AppHints {
         "com.google.Chrome", "com.brave.Browser", "com.microsoft.edgemac", "company.thebrowser.Browser", "com.vivaldi.Vivaldi",
         "com.apple.Safari", "org.mozilla.firefox", "com.operasoftware.Opera",
     ]
+    /// Code editors and IDEs: code goes in through files, never typed line by line.
+    public static let editors: [String] = [
+        "com.jetbrains.", "com.google.android.studio", "com.microsoft.VSCode", "com.apple.dt.Xcode", "com.todesktop.230313mzl4w4u92",
+        "dev.zed.Zed", "com.sublimetext.", "com.github.atom", "com.panic.Nova", "com.barebones.bbedit", "org.vim.MacVim",
+    ]
+    public static func isEditor(_ bundleID: String?) -> Bool {
+        guard let bundleID else { return false }
+        return editors.contains { bundleID.hasPrefix($0) }
+    }
+
     public static let chatApps: Set<String> = [
         "net.whatsapp.WhatsApp", "com.microsoft.teams2", "com.tinyspeck.slackmacgap", "com.apple.MobileSMS", "ru.keepcoder.Telegram",
         "com.hnc.Discord",
@@ -589,7 +599,11 @@ public enum AgentPrompt {
         - Take the direct way: open_url for websites, write_file then open_file for a new file with content, shell for terminal work, \
         message for chats, a menu rather than hunting for a button.
         - After typing into a search or address box, press return.
-        - "type" goes where the cursor is. To write in a message body or editor, click that area (it's in the list) first.
+        - "type" goes where the cursor is. To write in a message body, click that area (it's in the list) first.
+        - Code, and anything longer than a few lines, goes into a file: write_file with the COMPLETE content in one go, \
+        then open_file to show it in the editor. Never type code into an editor line by line; never "complete" a file by \
+        typing more into it. In an IDE the window title says "project – file" and "Open file" gives the path: put new files \
+        next to it.
         - "new" means new: a new email, message, note, document or tab starts with cmd+n (or cmd+t), even if a similar \
         window is already open. Never reuse or overwrite something the user was already writing.
         - Dictated addresses have no spaces: "pr.gupta 1993@gmail.com" is pr.gupta1993@gmail.com; "amazon dot in" is amazon.in.

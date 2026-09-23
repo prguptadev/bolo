@@ -202,7 +202,7 @@ final class Agent: ObservableObject {
                 scheduleHide(after: 4)
                 return
             }
-            await runAgent(goal: text, alternatives: heard.alternatives, alreadyDone: [])
+            await runAgent(goal: HearingFixes.apply(text), alternatives: heard.alternatives, alreadyDone: [])
             return
         }
         // Not sure it heard right (low confidence, or only a second guess made sense): drafts, not sends.
@@ -251,7 +251,7 @@ final class Agent: ObservableObject {
                 let handOver = ![.sendMessage, .draftMessage, .call].contains(step.action) && !cancelled
                 if handOver, usesAgent {
                     let done = zip(command.steps, results).map { "\($0.summary) → \($1)" }
-                    await runAgent(goal: text, alternatives: heard.alternatives, alreadyDone: done)
+                    await runAgent(goal: HearingFixes.apply(text), alternatives: heard.alternatives, alreadyDone: done)
                     return
                 }
                 conversation.record(utterance: text, steps: command.steps, results: results)
