@@ -195,3 +195,15 @@ import Testing
         #expect(!AppHints.isEditor(nil))
     }
 }
+
+@Suite struct CodeIsContent {
+    @Test func writingFilesGoesToTheAgent() {
+        #expect(Intent.isContentRequest("a new Java file Fibonacci.java in the folder ~/x"))
+        #expect(Intent.isContentRequest("a complete Fibonacci program"))
+        #expect(Intent.isContentRequest("a python script that renames my photos"))
+        #expect(!Intent.isContentRequest("bring the file tomorrow"))
+        let parser = CommandParser(knownNames: ["bhai"], knownApps: ["intellij idea"])
+        #expect(parser.parse("write a new Java file with a complete Fibonacci program and open it in IntelliJ") == nil)
+        #expect(parser.parse("type hello there")?.steps.first?.action == .typeText)
+    }
+}

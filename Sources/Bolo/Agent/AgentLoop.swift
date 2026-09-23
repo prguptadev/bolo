@@ -62,6 +62,12 @@ final class AgentLoop {
         let said = conversation.recentUtterances
         Log.agent.notice("agent goal: \(goal, privacy: .public) (\(self.brain.name, privacy: .public), level \(self.level.rawValue, privacy: .public))")
 
+        // Keys, clicks and typing would land on the login screen. (Opening apps, notes and reminders
+        // don't need the screen, but a locked Mac usually means nobody's watching the notch.)
+        if MacControl.isScreenLocked {
+            outcome.message = "The Mac is locked. Unlock it and say it again."
+            return outcome
+        }
         onMessage("Thinking…")
         let session: BrainSession
         do {
