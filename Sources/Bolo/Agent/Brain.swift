@@ -25,53 +25,42 @@ struct QwenBrain: Brain {
     }
 
     func startTask(system: String, maxTokens: Int) async throws -> BrainSession {
-        try await qwen.startSession(system: system, maxTokens: maxTokens)
+        try await qwen.load()
+        return QwenSession(qwen: qwen, system: system, maxTokens: maxTokens)
     }
 }
 
-/// A ChatSession over the loaded MLX model. Each `respond` only processes the new prompt.
+/// Each step is answered from the cached system prompt plus that step's own text.
 final class QwenSession: BrainSession {
-    private let session: ChatSession
     private let qwen: QwenPlanner
-
-    init(session: ChatSession, qwen: QwenPlanner) {
-        self.session = session
-        self.qwen = qwen
-    }
-
-    func respond(_ prompt: String) async throws -> String {
-        var reply = ""
-        for try await item in session.streamDetails(to: prompt) {
-            switch item {
-            case .chunk(let s): reply += s
-            case .info(let info):
-                // Where the time goes: reading the prompt, or writing the reply.
-                Log.agent.notice("model: \(info.promptTokenCount) prompt tokens in \(Int(info.promptTime * 1000)) ms, \(info.generationTokenCount) reply tokens in \(Int(info.generateTime * 1000)) ms (\(Int(Double(info.generationTokenCount) / max(0.001, info.generateTime))) tok/s)")
-            default: break
-            }
-        }
-        await qwen.touch()
-        return reply
-    }
-}
-
-/// Sends the whole exchange each time; Ollama and LM Studio cache the shared prefix themselves.
-final class EndpointSession: BrainSession {
-    private let brain: EndpointBrain
-    private var messages: [[String: String]]
+    private let system: String
     private let maxTokens: Int
 
-    init(brain: EndpointBrain, system: String, maxTokens: Int) {
-        self.brain = brain
-        self.messages = [["role": "system", "content": system]]
+    init(qwen: QwenPlanner, system: String, maxTokens: Int) {
+        self.qwen = qwen
+        self.system = system
         self.maxTokens = maxTokens
     }
 
     func respond(_ prompt: String) async throws -> String {
-        messages.append(["role": "user", "content": prompt])
-        let reply = try await brain.chat(messages: messages, maxTokens: maxTokens)
-        messages.append(["role": "assistant", "content": reply])
-        return reply
+        try await qwen.respondCached(system: system, prompt: prompt, maxTokens: maxTokens)
+    }
+}
+
+/// Ollama and LM Studio cache the system prompt themselves.
+final class EndpointSession: BrainSession {
+    private let brain: EndpointBrain
+    private let system: String
+    private let maxTokens: Int
+
+    init(brain: EndpointBrain, system: String, maxTokens: Int) {
+        self.brain = brain
+        self.system = system
+        self.maxTokens = maxTokens
+    }
+
+    func respond(_ prompt: String) async throws -> String {
+        try await brain.chat(messages: [["role": "system", "content": system], ["role": "user", "content": prompt]], maxTokens: maxTokens)
     }
 }
 
@@ -121,17 +110,6 @@ extension String {
 extension QwenPlanner {
     /// A single system + user exchange.
     func respond(system: String, prompt: String, maxTokens: Int) async throws -> String {
-        let reply = try await startSession(system: system, maxTokens: maxTokens).respond(prompt)
-        return reply
-    }
-
-    /// A multi-turn session for one task. Deterministic (temperature 0, thinking off); bigger
-    /// prefill chunks make long screens faster to read.
-    func startSession(system: String, maxTokens: Int) async throws -> QwenSession {
-        let container = try await load()
-        var params = GenerateParameters(maxTokens: maxTokens, temperature: 0)
-        params.prefillStepSize = 1024
-        let session = ChatSession(container, instructions: system, generateParameters: params, additionalContext: ["enable_thinking": false])
-        return QwenSession(session: session, qwen: self)
+        try await respondCached(system: system, prompt: prompt, maxTokens: maxTokens)
     }
 }

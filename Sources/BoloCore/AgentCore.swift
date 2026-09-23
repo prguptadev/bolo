@@ -45,6 +45,12 @@ public struct Observation: Sendable {
         self.app = app
     }
 
+    /// What the model would act on. When this is the same as last step's, the screen isn't resent
+    /// (text that jitters, like a clock or a chat, doesn't count).
+    public var signature: String {
+        ([app, window ?? "", url ?? "", focused ?? ""] + elements.map { "\($0.id)|\($0.role)|\($0.label)|\($0.value ?? "")" }).joined(separator: "\n")
+    }
+
     /// Compact on purpose: every bracket and quote is a token, and the model reads this each step.
     /// `menus` are only worth sending when the app changed.
     public func render(includeMenus: Bool = true) -> String {
@@ -321,22 +327,25 @@ public struct AgentAction: Sendable, Equatable {
         return s.range(of: "\\b(?:" + pattern + ")\\b", options: [.regularExpression, .caseInsensitive]) != nil
     }
 
-    /// Buttons of macOS permission prompts ("Bolo would like to control Chrome"). Those answers are yours.
-    private static let permissionButtons = "^(allow|don'?t allow|don’t allow|always allow|allow once|only while using|open system settings|not now|later|turn on|grant)$"
+    /// Buttons of permission prompts, macOS's ("Bolo would like to control Chrome") or a browser's
+    /// ("wikipedia.org wants to show notifications"). Those answers are yours.
+    private static let permissionButtons = "^(allow|block|don'?t allow|don’t allow|always allow|allow once|allow this time|allow on every visit|only while using|open system settings|not now|later|never|turn on|grant|ok, got it)$"
 
     public static func isPermissionButton(_ label: String?) -> Bool {
         guard let label else { return false }
         return label.trimmingCharacters(in: .whitespaces).range(of: permissionButtons, options: [.regularExpression, .caseInsensitive]) != nil
     }
 
-    /// Never done by Bolo, at any permission level.
-    public func forbidden(elementRole: String? = nil) -> String? {
+    /// Never done by Bolo, at any permission level. `elementLabel`/`elementRole`: what the id on
+    /// the screen list points at (a click by number has no label of its own).
+    public func forbidden(elementLabel: String? = nil, elementRole: String? = nil) -> String? {
+        let what = label ?? elementLabel
         switch tool {
         case .click, .menu:
-            if Self.isPermissionButton(label) { return "That's a macOS permission prompt. Answer it yourself." }
-            return Self.words(label, match: Self.moneyWords) ? "Bolo doesn't pay or buy. Do that yourself." : nil
+            if Self.isPermissionButton(what) { return "That's a permission prompt. The user answers those." }
+            return Self.words(what, match: Self.moneyWords) ? "Bolo doesn't pay or buy. Do that yourself." : nil
         case .fill, .type:
-            let secret = (elementRole ?? "").contains("password") || Self.words(label, match: "password|passcode|otp|cvv|card number|pin")
+            let secret = (elementRole ?? "").contains("password") || Self.words(what, match: "password|passcode|otp|cvv|card number|pin")
             return secret ? "Bolo never types passwords, codes or card numbers." : nil
         case .shell:
             return ShellSafety.forbidden(command ?? "")
@@ -345,8 +354,10 @@ public struct AgentAction: Sendable, Equatable {
         }
     }
 
-    /// How much this step changes. `inChatApp`: Return in a chat app sends.
-    public func risk(inChatApp: Bool = false) -> Risk {
+    /// How much this step changes. `inChatApp`: Return in a chat app sends. `elementLabel`: what a
+    /// click by number points at.
+    public func risk(inChatApp: Bool = false, elementLabel: String? = nil) -> Risk {
+        let label = label ?? elementLabel
         switch tool {
         case .done, .ask, .wait, .readFile, .listFiles, .lookup: return .read
         case .openApp, .openURL, .openFile, .scroll, .tab: return .navigate
@@ -595,15 +606,20 @@ public enum AgentPrompt {
         """
     }
 
-    /// Every step after the first: only what's new. The session remembers the goal and earlier steps.
-    public static func next(result: String, screen: String?, hints: String?, step: Int, maxSteps: Int) -> String {
-        var parts = ["Result: \(result)", screen.map { "Screen now:\n" + $0 } ?? "Screen: unchanged."]
-        if let hints { parts.append("Tips for this app: " + hints) }
-        parts.append("Step \(step) of at most \(maxSteps). Reply with one JSON action.")
-        return parts.joined(separator: "\n\n")
+    /// Older steps are kept short; the last two keep their output (a file just read, a command's result).
+    public static func trimmed(_ history: [String]) -> [String] {
+        let recent = history.suffix(12)
+        let dropped = history.count - recent.count
+        var lines = recent.enumerated().map { i, line in
+            Conversation.short(line, i >= recent.count - 2 ? 1200 : 160)
+        }
+        if dropped > 0 { lines.insert("(\(dropped) earlier steps not shown)", at: 0) }
+        return lines
     }
 
-    public static func turn(goal: String, alternatives: [String] = [], context: String, memory: String, screen: String, history: [String], step: Int, maxSteps: Int, hints: String?) -> String {
+    /// One self-contained prompt per step (the model keeps no memory between steps; the cached
+    /// system prompt does the remembering of the rules). `screen` nil = same as last step.
+    public static func turn(goal: String, alternatives: [String] = [], context: String, memory: String, screen: String?, history: [String], step: Int, maxSteps: Int, hints: String?) -> String {
         var parts = ["Goal: \(goal)"]
         let others = alternatives.filter { $0 != goal }.prefix(2)
         if !others.isEmpty { parts.append("(The goal was spoken; the recogniser's other guesses: " + others.map { "\"\($0)\"" }.joined(separator: ", ") + ".)") }
@@ -614,7 +630,7 @@ public enum AgentPrompt {
         } else {
             parts.append("Steps so far:\n" + history.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: "\n"))
         }
-        parts.append("Screen now:\n" + screen)
+        parts.append(screen.map { "Screen now:\n" + $0 } ?? "Screen now: unchanged since the previous step.")
         if let hints { parts.append("Tips for this app: " + hints) }
         parts.append("This is step \(step) of at most \(maxSteps). Reply with one JSON action.")
         return parts.joined(separator: "\n\n")

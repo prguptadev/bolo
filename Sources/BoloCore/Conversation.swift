@@ -51,13 +51,13 @@ public struct Conversation: Sendable {
     /// Everything said earlier in this conversation, for grounding follow-ups ("tell him…").
     public var recentUtterances: [String] { turns.map(\.utterance) }
 
-    /// For the model: the last few turns, oldest first.
-    public func render(maxTurns: Int = 5) -> String {
+    /// For the model: the last few turns, oldest first, kept short (it reads this every step).
+    public func render(maxTurns: Int = 3) -> String {
         guard !turns.isEmpty else { return "" }
         var lines = ["Earlier in this conversation (oldest first):"]
         for t in turns.suffix(maxTurns) {
-            lines.append("- User said: \"\(t.utterance)\"")
-            if !t.did.isEmpty { lines.append("  Bolo did: " + t.did.joined(separator: "; ")) }
+            lines.append("- User said: \"\(Conversation.short(t.utterance, 160))\"")
+            if !t.did.isEmpty { lines.append("  Bolo did: " + t.did.suffix(4).map { Conversation.short($0, 90) }.joined(separator: "; ")) }
         }
         if let workingDirectory { lines.append("Terminal folder: \(workingDirectory)") }
         return lines.joined(separator: "\n")

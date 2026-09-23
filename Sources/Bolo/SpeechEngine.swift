@@ -97,12 +97,15 @@ final class SpeechEngine {
     private var preparing: Task<Void, Never>?
 
     /// Makes sure Apple's speech model is on disk, downloading it in the background if not.
-    /// Called at launch; a key press never waits for a download.
+    /// Called at launch and whenever the model turns out to be missing (macOS removes downloaded
+    /// speech models when the disk is nearly full). A key press never waits for a download.
     func prepare() {
         guard preparing == nil else { return }
         let module = makeModule(resultsTo: nil)
         let locale = self.locale
         preparing = Task {
+            // Whatever happens, a later call may check again.
+            defer { self.preparing = nil }
             if await AssetInventory.status(forModules: [module]) == .installed {
                 Log.speech.notice("speech model \(locale.identifier, privacy: .public) installed")
                 return
@@ -116,7 +119,6 @@ final class SpeechEngine {
                 Log.speech.notice("speech model \(locale.identifier, privacy: .public) ready")
             } catch {
                 Log.speech.error("speech model download failed: \(error.localizedDescription, privacy: .public)")
-                self.preparing = nil  // try again next time
             }
         }
     }
@@ -164,7 +166,7 @@ final class SpeechEngine {
         if await AssetInventory.status(forModules: [module]) != .installed {
             results?.cancel()
             prepare()
-            throw SpeechError.modelNotReady("Apple's speech model for \(locale.identifier) is still downloading. Try again in a minute.")
+            throw SpeechError.modelNotReady("Apple's speech model for \(locale.identifier) isn't on the Mac right now (macOS removes it when the disk is full). Getting it again; try in a minute.")
         }
         let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [module])
         let (stream, continuation) = AsyncStream<AnalyzerInput>.makeStream()

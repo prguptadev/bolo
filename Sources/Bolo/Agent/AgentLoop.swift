@@ -56,7 +56,6 @@ final class AgentLoop {
         var working = MacControl.frontApp()
         var lastBundle: String?
         var lastScreen: String?
-        /// What to tell the model about the previous step (nil on the first step).
         var result: String?
         let memory = Memory.read()
         let context = conversation.render()
@@ -88,18 +87,15 @@ final class AgentLoop {
             }
             let appChanged = snap.bundleID != lastBundle
             lastBundle = snap.bundleID
-            let hints = appChanged ? Skills.hints(app: snap.observation.app, bundleID: snap.bundleID) : nil
+            let hints = appChanged || step % 4 == 1 ? Skills.hints(app: snap.observation.app, bundleID: snap.bundleID) : nil
             let screen = snap.observation.render(includeMenus: appChanged)
-            let prompt: String
-            if let result {
-                // A shell command or a file write rarely changes the window: don't resend it.
-                prompt = AgentPrompt.next(result: result, screen: screen == lastScreen ? nil : screen, hints: hints, step: step, maxSteps: maxSteps)
-            } else {
-                prompt = AgentPrompt.turn(
-                    goal: goal, alternatives: alternatives, context: context, memory: memory, screen: snap.observation.render(),
-                    history: history, step: step, maxSteps: maxSteps, hints: hints)
-            }
-            lastScreen = screen
+            // A shell command or a file write rarely changes the window: don't resend it.
+            let signature = snap.observation.signature
+            let prompt = AgentPrompt.turn(
+                goal: goal, alternatives: alternatives, context: context, memory: memory,
+                screen: step > 1 && signature == lastScreen ? nil : screen,
+                history: AgentPrompt.trimmed(history), step: step, maxSteps: maxSteps, hints: hints)
+            lastScreen = signature
             let reply: String
             let started = Date()
             do {
@@ -149,7 +145,8 @@ final class AgentLoop {
             lastAction = action
 
             // Never, at any level.
-            if let why = action.forbidden(elementRole: action.id.flatMap { snap.role(of: $0) }) {
+            let pointedAt = action.id.flatMap { snap.label(of: $0) }
+            if let why = action.forbidden(elementLabel: pointedAt, elementRole: action.id.flatMap { snap.role(of: $0) }) {
                 result = "\(action.summary) → refused: \(why)"
                 history.append(result!)
                 onRow("\(action.summary) · \(why)", .failed, false)
@@ -158,7 +155,7 @@ final class AgentLoop {
             }
 
             // Permission for this level.
-            var risk = action.risk(inChatApp: AppHints.chatApps.contains(snap.bundleID ?? ""))
+            var risk = action.risk(inChatApp: AppHints.chatApps.contains(snap.bundleID ?? ""), elementLabel: pointedAt)
             if action.tool == .writeFile, let p = action.path, FileManager.default.fileExists(atPath: (p as NSString).expandingTildeInPath) {
                 risk = .destructive  // overwriting
             }

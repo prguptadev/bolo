@@ -79,17 +79,17 @@ Change `brainModel`, then run `--download-brain` again. Nothing ever leaves the 
 key is involved. If you run Ollama or LM Studio, set `agentBrain` to `endpoint` and `endpointModel`
 to the model name there instead.
 
-### Let the agent read web pages
+### Web pages
 
-The agent reads a web page through the browser itself (its links, buttons, tabs and fields, numbered).
-That needs one switch per browser, once:
+The agent reads web pages through macOS Accessibility, nothing to switch on. (Chrome takes a few
+seconds to expose a page the first time after it starts; Bolo waits for it.) The first time it
+touches a browser, macOS asks "Bolo wants to control Google Chrome": click **Allow** yourself; the
+agent stops while that prompt is up and never answers it.
 
-- **Chrome / Brave / Edge / Arc**: menu **View › Developer › Allow JavaScript from Apple Events**.
-- **Safari**: Settings › Advanced › *Show features for web developers*, then **Develop › Allow JavaScript from Apple Events**.
-
-The first time, macOS asks "Bolo wants to control Google Chrome": click **Allow** yourself; the
-agent stops when that prompt is up and never answers it. Without the switch, the agent falls back to
-the Accessibility tree, which is slower and sees less of the page.
+Optional, for busier pages: let Bolo read the page through the browser itself, which is faster and
+sees elements Accessibility hides. **Chrome / Brave / Edge / Arc**: View › Developer › Allow
+JavaScript from Apple Events. **Safari**: Settings › Advanced › *Show features for web developers*,
+then Develop › Allow JavaScript from Apple Events.
 
 ## 6. Best hearing
 

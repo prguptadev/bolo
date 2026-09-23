@@ -207,7 +207,7 @@ final class Tools {
 
     /// Runs in zsh (your profile loaded), in the carried folder, with the output trimmed to what the
     /// model needs. `cd` carries over to the next command.
-    func shell(_ command: String, timeout: Double = 60) async throws -> String {
+    func shell(_ command: String, timeout: Double = 30) async throws -> String {
         let marker = "__BOLO_CWD__"
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/bin/zsh")
@@ -232,8 +232,15 @@ final class Tools {
         let deadline = Date().addingTimeInterval(timeout)
         while p.isRunning {
             if isCancelled() || Date() > deadline {
+                // Stop the command itself too, not just the shell around it (a stuck `ls` on an
+                // iCloud folder would otherwise sit there for good).
+                let children = Process()
+                children.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
+                children.arguments = ["-TERM", "-P", String(p.processIdentifier)]
+                try? children.run()
+                children.waitUntilExit()
                 p.terminate()
-                throw SkillError.failed(isCancelled() ? "Stopped." : "`\(Conversation.short(command, 40))` took more than \(Int(timeout)) s and was stopped.")
+                throw SkillError.failed(isCancelled() ? "Stopped." : "`\(Conversation.short(command, 40))` took more than \(Int(timeout)) s and was stopped. Use a quicker command (ls, or find with -maxdepth 2).")
             }
             try await Task.sleep(for: .milliseconds(100))
         }

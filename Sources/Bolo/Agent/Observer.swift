@@ -137,10 +137,11 @@ enum Observer {
         }
         let box = AXBox(window)
         var found = await Task.detached { walk(box.el, limit: maxElements, textLimit: textLimit) }.value
-        // Chrome switches its accessibility on a few seconds after an assistive app starts asking
-        // (its nodes have no names or frames before that). Wait for it, once per process.
+        // Chrome switches its accessibility on a few seconds after an assistive app starts asking:
+        // until then its tree has plenty of nodes but no names or frames. Wait for it, once per
+        // process. (A genuinely small window, like Terminal's, has few nodes: no waiting.)
         var tries = 0
-        while found.items.count < 3, tries < 4, !askedForTree.contains(pidKey + "-warm") {
+        while found.visited > 60, found.items.count < 3, tries < 4, !askedForTree.contains(pidKey + "-warm") {
             tries += 1
             try? await Task.sleep(for: .milliseconds(800))
             found = await Task.detached { walk(box.el, limit: maxElements, textLimit: textLimit) }.value
@@ -161,6 +162,7 @@ enum Observer {
         /// Plain text on screen (headings, messages, paragraphs), for context and reading.
         var text = ""
         var stats = ""
+        var visited = 0
     }
 
     private static let skipInside: Set<String> = [
@@ -253,6 +255,7 @@ enum Observer {
             text += (text.isEmpty ? "" : " · ") + label
         }
         found.text = text
+        found.visited = visited
         let top = roles.sorted { $0.value > $1.value }.prefix(10).map { "\($0.key.replacingOccurrences(of: "AX", with: "")) \($0.value)" }
         found.stats = "visited \(visited) nodes in \(Int(Date().timeIntervalSince(started) * 1000)) ms\(Date() >= deadline ? " (budget hit)" : ""), \(controls.count) controls, \(texts.count) texts; roles: " + top.joined(separator: ", ")
         found.stats += "\nsample: " + sample.joined(separator: " | ")

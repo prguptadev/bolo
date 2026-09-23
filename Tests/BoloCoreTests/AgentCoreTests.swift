@@ -127,7 +127,9 @@ import Testing
         #expect(text.contains("1 tab Updates"))
         #expect(text.contains("Page: https://mail.google.com"))
         #expect(!o.render(includeMenus: false).contains("Menus:"))
-        #expect(AgentPrompt.next(result: "ok", screen: nil, hints: nil, step: 2, maxSteps: 5).contains("Screen: unchanged."))
+        let p = AgentPrompt.turn(goal: "g", context: "", memory: "", screen: nil, history: ["a", "b"], step: 2, maxSteps: 5, hints: nil)
+        #expect(p.contains("unchanged since the previous step"))
+        #expect(AgentPrompt.trimmed(Array(repeating: String(repeating: "x", count: 500), count: 15)).count == 13)
     }
 }
 
@@ -138,6 +140,12 @@ import Testing
         #expect(AgentAction(.click, label: "Open System Settings").forbidden() != nil)
         #expect(AgentAction(.click, label: "Allow notifications from this site?").forbidden() == nil)
         #expect(AgentAction(.click, label: "Updates").forbidden() == nil)
+        // A click by number is checked against what that number points at.
+        #expect(AgentAction(.click, id: 3).forbidden(elementLabel: "Allow") != nil)
+        #expect(AgentAction(.click, id: 3).forbidden(elementLabel: "Block") != nil)
+        #expect(AgentAction(.click, id: 3).forbidden(elementLabel: "Search") == nil)
+        #expect(AgentAction(.click, id: 4).risk(elementLabel: "Delete forever") == .destructive)
+        #expect(AgentAction(.click, id: 4).risk(elementLabel: "Send") == .send)
     }
 }
 

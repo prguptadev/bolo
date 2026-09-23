@@ -69,8 +69,62 @@ actor QwenPlanner {
 
     func unload() {
         container = nil
+        prefixes = [:]
         MLX.Memory.clearCache()
         Log.agent.notice("Qwen unloaded")
+    }
+
+    // MARK: Prompt cache
+
+    /// The agent's system prompt, run through the model once and kept as a KV cache. Each step then
+    /// starts from a copy of it and only reads its own text: measured, the system prompt alone was
+    /// ~1,350 tokens, 4.4 s of every 5 s step on the M4 Air.
+    private struct PrefixCache {
+        let system: String
+        let tokens: [Int]
+        let cache: [KVCache]
+    }
+    /// One per system prompt: the agent's and the one-shot planner's.
+    private var prefixes: [String: PrefixCache] = [:]
+
+    func respondCached(system: String, prompt: String, maxTokens: Int) async throws -> String {
+        let container = try await load()
+        var params = GenerateParameters(maxTokens: maxTokens, temperature: 0)
+        params.prefillStepSize = 1024
+        let existing = prefixes[system]
+        let (reply, built, newTokens, ms) = try await container.perform { context -> (String, PrefixCache?, Int, Int) in
+            func tokens(_ user: String) async throws -> [Int] {
+                let input = try await context.processor.prepare(
+                    input: UserInput(chat: [.system(system), .user(user)], additionalContext: ["enable_thinking": false]))
+                return input.text.tokens.asArray(Int32.self).map { Int($0) }
+            }
+            var pc = existing
+            if pc == nil {
+                // The template's tokens up to where the user text begins are the same for every step.
+                let a = try await tokens("Goal: a"), b = try await tokens("Result: b")
+                var n = 0
+                while n < min(a.count, b.count) - 1, a[n] == b[n] { n += 1 }
+                let cache = context.model.newCache(parameters: params)
+                // The iterator prefills all but the last token it's given: hand it one extra.
+                _ = try TokenIterator(prompt: MLXArray(a[0..<n].map { Int32($0) } + [Int32(a[n])]), model: context.model, cache: cache, parameters: params)
+                eval(cache.flatMap { $0.innerState() })
+                pc = PrefixCache(system: system, tokens: Array(a[0..<n]), cache: cache)
+                Log.agent.notice("prompt cache built: \(n) tokens")
+            }
+            let full = try await tokens(prompt)
+            let started = Date()
+            let usable = pc.map { full.count > $0.tokens.count && Array(full[0..<$0.tokens.count]) == $0.tokens } ?? false
+            let suffix = usable ? Array(full[pc!.tokens.count...]) : full
+            let cache = usable ? pc!.cache.map { $0.copy() } : context.model.newCache(parameters: params)
+            let input = LMInput(tokens: MLXArray(suffix.map { Int32($0) }))
+            let iterator = try TokenIterator(prompt: input.text.tokens, model: context.model, cache: cache, parameters: params)
+            let result = generate(input: input, context: context, iterator: iterator) { (_: [Int]) -> GenerateDisposition in .more }
+            return (result.output, pc, suffix.count, Int(Date().timeIntervalSince(started) * 1000))
+        }
+        if let built { prefixes[system] = built }
+        Log.agent.notice("model: \(newTokens) prompt tokens read, replied in \(ms) ms")
+        scheduleUnload()
+        return reply
     }
 
     private func scheduleUnload() {
@@ -84,15 +138,9 @@ actor QwenPlanner {
     }
 
     func plan(_ utterance: String) async throws -> Command? {
-        let container = try await load()
         let started = Date()
-        // A fresh session per sentence: no memory of earlier commands.
-        let session = ChatSession(
-            container, instructions: Self.instructions,
-            generateParameters: GenerateParameters(maxTokens: 400, temperature: 0),
-            additionalContext: ["enable_thinking": false])
-        let json = try await session.respond(to: utterance)
-        scheduleUnload()
+        // No memory of earlier commands; the instructions are cached, so this costs ~1 s.
+        let json = try await respondCached(system: Self.instructions, prompt: utterance, maxTokens: 400)
         let steps = ModelOutput.steps(fromJSON: json)
         Log.agent.notice("Qwen \(Int(Date().timeIntervalSince(started) * 1000)) ms: \(json, privacy: .public)")
         return Grounding.filter(Command(utterance: utterance, steps: steps, source: .qwen))
