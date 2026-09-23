@@ -11,7 +11,7 @@ public enum Grounding {
         "please", "saying", "that", "ko", "ki", "karo",
     ]
 
-    static func words(_ s: String) -> [String] {
+    public static func words(_ s: String) -> [String] {
         s.lowercased()
             .replacingOccurrences(of: "[^\\p{L}\\p{N}' ]", with: " ", options: .regularExpression)
             .split(separator: " ").map(String.init)
@@ -70,7 +70,8 @@ public enum Grounding {
             case .openApp:
                 if let app = step.app, share(of: app, in: u) > 0 || appSpoken(app, in: u) { kept.append(step) }
             case .openURL:
-                if let t = step.text, share(of: t, in: u) > 0 { kept.append(step) }
+                // Opening a page changes nothing, and people name sites, not addresses ("my Gmail").
+                if let t = step.text, !t.isEmpty { kept.append(step) }
             case .joinNextMeeting, .setVolume, .mute, .unmute, .lockScreen, .scroll, .goBack:
                 kept.append(step)
             case .click, .menu:

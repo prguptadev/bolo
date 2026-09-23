@@ -49,9 +49,10 @@ if let path = value(after: "--batch") {
 } else if args.contains("--download-brain") || args.contains("--test-brain") {
     // Downloads Qwen3.5-4B (~3.1 GB, once) and runs one sentence through it.
     Task { @MainActor in
+        _ = Settings.load()  // applies brainModel
         let qwen = QwenPlanner(idleSeconds: 60)
         do {
-            print(QwenPlanner.isDownloaded ? "Qwen is downloaded; loading…" : "Downloading \(QwenPlanner.modelID) (~3.1 GB)…")
+            print(QwenPlanner.isDownloaded ? "\(QwenPlanner.modelID) is downloaded; loading…" : "Downloading \(QwenPlanner.modelID) (a few GB)…")
             let t0 = Date()
             try await qwen.load()
             print("✓ loaded in \(Int(Date().timeIntervalSince(t0) * 1000)) ms")

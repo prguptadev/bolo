@@ -52,19 +52,44 @@ A microphone icon appears in the menu bar.
    The global key only starts working after a relaunch with Accessibility on.
 3. **Microphone** and **Contacts**: allow when asked.
 4. Menu bar icon › **Check setup…**: everything except Reminders and Calendar should be ✓.
-   Those two, and **Automation** (for Messages, Notes, Mail), are asked the first time you use them.
+   Those two, and **Automation** (for Messages, Notes, Mail, and each browser the agent reads),
+   are asked the first time you use them. The agent stops while such a prompt is up: click Allow,
+   then say the command again.
 
-## 5. Download the Qwen brain (once, 3.1 GB)
+## 5. Download the brain (once)
 
-The phrase rules handle everyday commands instantly. For anything phrased differently (and for
-trickier Hinglish), Bolo uses Qwen3.5-4B on the GPU. Download it once:
+The phrase rules handle everyday commands instantly. Everything else (unusual phrasing, Hinglish,
+follow-ups, and multi-step jobs on the screen) is done by a local model on the GPU. Download it once:
 
 ```bash
 ~/Applications/Bolo.app/Contents/MacOS/Bolo --download-brain
 ```
 
-It prints a test sentence and how Qwen understood it. Bolo loads Qwen while you're talking and
-unloads it after 5 idle minutes, so its ~3.2 GB of memory is only used while you use Bolo.
+It prints a test sentence and how the model understood it. The model is loaded while you're
+talking and unloaded after 5 idle minutes, so its memory is only used while you use Bolo.
+
+Which model, in Settings (`brainModel`):
+
+| Model | Download | Memory | Agent quality |
+|---|---|---|---|
+| `mlx-community/Qwen3.5-4B-MLX-4bit` (default) | 3.1 GB | ~3.2 GB | fine for 2–5 step jobs; 5–9 s a step |
+| `mlx-community/Qwen3.5-9B-MLX-4bit` | 5.3 GB | ~5.5 GB | noticeably better planning; about twice as slow |
+
+Change `brainModel`, then run `--download-brain` again. Nothing ever leaves the Mac, and no API
+key is involved. If you run Ollama or LM Studio, set `agentBrain` to `endpoint` and `endpointModel`
+to the model name there instead.
+
+### Let the agent read web pages
+
+The agent reads a web page through the browser itself (its links, buttons, tabs and fields, numbered).
+That needs one switch per browser, once:
+
+- **Chrome / Brave / Edge / Arc**: menu **View › Developer › Allow JavaScript from Apple Events**.
+- **Safari**: Settings › Advanced › *Show features for web developers*, then **Develop › Allow JavaScript from Apple Events**.
+
+The first time, macOS asks "Bolo wants to control Google Chrome": click **Allow** yourself; the
+agent stops when that prompt is up and never answers it. Without the switch, the agent falls back to
+the Accessibility tree, which is slower and sees less of the page.
 
 ## 6. Best hearing
 
@@ -107,6 +132,10 @@ Hold the **right ⌥** key, speak, release. Stop anything with **Esc**.
 | 8 | "Chrome kholo and search google for heap dump analysis" | Two steps, two ✓ |
 | 9 | "teams myself saying test from Bolo" | Teams chat with yourself, sent |
 | 10 | "join my next meeting" | Calendar prompt, then opens the meeting link (if one is in the next 3 h) |
+| 11 | "open TextEdit, make a new document and type hello from Bolo" | The agent: three steps in the notch, then the text in TextEdit |
+| 12 | "open chrome and go to wikipedia.org", then "on that page search for Mahatma Gandhi" | The second one is a follow-up: the agent fills Wikipedia's search box |
+| 13 | "list the files in my Downloads folder" | The agent runs `ls` and reads the names in the notch |
+| 14 | "delete the oldest file there" | Standard level: the notch asks you to say "yes"; the file goes to the Bin |
 
 Check how a sentence is understood without acting on it:
 

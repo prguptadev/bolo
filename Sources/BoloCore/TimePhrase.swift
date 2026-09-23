@@ -50,10 +50,17 @@ public enum TimePhrase {
             if let next = options.filter({ $0 > now }).min() { return next }
             return cal.date(byAdding: .day, value: 1, to: cal.date(bySettingHour: hour % 12, minute: 0, second: 0, of: now)!)
         }
-        guard let m = detector.firstMatch(in: phrase, range: whole), let date = m.date else { return nil }
+        guard let m = detector.firstMatch(in: phrase, range: whole), var date = m.date else { return nil }
         let saysDay = phrase.range(of: "tomorrow|today|monday|tuesday|wednesday|thursday|friday|saturday|sunday|kal|\\d{1,2}(st|nd|rd|th)",
                                    options: [.regularExpression, .caseInsensitive]) != nil
-        if !saysDay, date < now { return Calendar.current.date(byAdding: .day, value: 1, to: date) }
+        if !saysDay {
+            // The detector puts a bare "5 pm" on the real clock's day; put it on `now`'s day instead,
+            // and if that's already past, tomorrow.
+            let cal = Calendar.current
+            let hm = cal.dateComponents([.hour, .minute], from: date)
+            date = cal.date(bySettingHour: hm.hour ?? 0, minute: hm.minute ?? 0, second: 0, of: now) ?? date
+            if date < now { return cal.date(byAdding: .day, value: 1, to: date) }
+        }
         return date
     }
 }

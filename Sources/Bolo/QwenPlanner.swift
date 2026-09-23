@@ -15,7 +15,10 @@ import Tokenizers
 ///   `idleSeconds` without use, so its ~3.2 GB is held only while you're using Bolo.
 /// - Deterministic (temperature 0, thinking off). Its JSON reply is parsed, then grounded.
 actor QwenPlanner {
-    static let modelID = "mlx-community/Qwen3.5-4B-MLX-4bit"
+    static let defaultModelID = "mlx-community/Qwen3.5-4B-MLX-4bit"
+    /// From `brainModel` in settings: any MLX text model on Hugging Face (Qwen3.5-9B-MLX-4bit is the
+    /// sensible step up for agent work: ~5 GB, roughly twice as slow, noticeably better at planning).
+    nonisolated(unsafe) static var modelID = defaultModelID
 
     private let idleSeconds: Double
     private var container: ModelContainer?
@@ -60,6 +63,9 @@ actor QwenPlanner {
         scheduleUnload()
         return c
     }
+
+    /// Used just now: keep it loaded a while longer.
+    func touch() { scheduleUnload() }
 
     func unload() {
         container = nil

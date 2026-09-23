@@ -52,8 +52,8 @@ enum SetupCheck {
             lines.append(Line(
                 ok: QwenPlanner.isDownloaded,
                 text: QwenPlanner.isDownloaded
-                    ? "Qwen brain downloaded (understands unusual phrasing and Hinglish)"
-                    : "Qwen brain not downloaded. Run: ~/Applications/Bolo.app/Contents/MacOS/Bolo --download-brain (3.1 GB)"))
+                    ? "Brain downloaded: \(QwenPlanner.modelID) (agent, unusual phrasing, Hinglish)"
+                    : "Brain not downloaded. Run: ~/Applications/Bolo.app/Contents/MacOS/Bolo --download-brain"))
         }
 
         let nicknames = Nicknames.load()

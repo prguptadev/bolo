@@ -38,8 +38,24 @@ on-device language model as a fallback. The app is under 1 MB and uses about 50 
 | `scroll down 3 times` · `neeche scroll karo` · `go back` | Scrolls or goes back |
 | `open the family group on whatsapp` · `whatsapp design team saying …` | Finds a chat by name (groups, or people without a saved number); only on one exact match |
 
-Sentences that don't match a pattern go to Apple's on-device model. Its output is only used if
-every contact and message word appears in what you said (see "Safety").
+Anything else, and any follow-up, goes to the **agent**: a local model (Qwen, on the GPU) that
+looks at the screen, picks one action, does it, looks again, and repeats until the job is done. It
+sees every app through macOS Accessibility and web pages through the browser, as a numbered list of
+buttons, links, tabs and fields, and it also has the terminal and your files:
+
+| You say | The agent does |
+|---|---|
+| `open chrome and go to gmail` … then `now click Updates` | Follow-ups use the conversation and what's on screen |
+| `on this page, search for Mahatma Gandhi` | Fills the page's search box, presses Return |
+| `open TextEdit, make a new document and type hello` | Opens the app, clicks New Document, types |
+| `list the files in my Developer folder` … `rename the first one to old` | Runs it in zsh; the folder carries over between commands |
+| `make a Java hello world in my project and open it in IntelliJ` | Writes the file, opens it in the editor |
+| `what's on the screen` · `is the build green` | Reads the window and answers |
+| `remember my projects are in ~/Developer` | Kept in `memory.md` for every later conversation |
+
+Model output is only used if every contact and message word appears in what you said, and the
+agent works within your permission level (see "Safety"). Your own tips for an app go in
+`~/Library/Application Support/Bolo/skills/<App name>.md`; the agent reads them when that app is in front.
 
 ## Install
 
@@ -94,6 +110,17 @@ Bolo acts without asking, so it's built not to act on things you didn't say:
 - Before searching an app's chats by name, Bolo checks the search box really has focus.
 - `Esc` stops a running command. There's a 0.8 s pause before sending (`sendDelaySeconds` in
   Settings); set it to `0` for none.
+- **Permission levels** (`permissionLevel` in Settings) decide what the agent may do on its own.
+  `safe`: look, open, navigate, type, drafts; nothing leaves the Mac, nothing is deleted.
+  `standard` (default): also sends, quits apps and changes settings, but every send, delete or
+  overwrite waits for you to hold the key and say "yes". `full`: everything, with a 3 s countdown
+  before deletes (Esc stops it).
+- At every level the agent never answers macOS permission prompts, never types into a password,
+  OTP or card field, never pays, never runs `sudo`, `rm -rf ~`, disk tools or scripts piped from
+  the internet, and deletes files with `trash` (to the Bin), not `rm`. Overwriting a file with `>`
+  counts as a delete.
+- A message the agent composes goes only to a person you named, and is sent only if you said the
+  words; otherwise it's typed as a draft.
 - There are no skills for payments, passwords or system security settings.
 
 ## Development

@@ -28,6 +28,21 @@ struct Settings: Codable {
     var brain: String = "qwen"
     /// Unload Qwen after this many seconds without use, freeing ~3.2 GB.
     var brainIdleSeconds: Double = 300
+    /// The MLX model Bolo loads itself. Bigger = better agent, slower: "mlx-community/Qwen3.5-9B-MLX-4bit" (~5 GB).
+    var brainModel: String = "mlx-community/Qwen3.5-4B-MLX-4bit"
+    /// What the agent loop thinks with: "mlx" (brainModel, inside Bolo) or "endpoint" (Ollama / LM Studio on this Mac).
+    var agentBrain: String = "mlx"
+    /// OpenAI-style local server for "endpoint": Ollama is http://localhost:11434/v1, LM Studio http://localhost:1234/v1.
+    var endpointURL: String = "http://localhost:11434/v1"
+    /// The model name that server knows, e.g. "qwen3.5:9b" or "gemma3:12b".
+    var endpointModel: String = "qwen3.5:9b"
+    /// "safe": look, open, navigate, type, drafts. "standard": plus sending and system actions, each
+    /// send or delete confirmed by voice ("yes"). "full": everything; deletes after a countdown.
+    var permissionLevel: String = "standard"
+    /// Most look-decide-act steps for one request.
+    var agentMaxSteps: Int = 14
+    /// Follow-ups ("now click Updates", "rename it") remember the conversation this long.
+    var conversationMinutes: Double = 10
     /// Bumped when a default changes because of measurements, so old defaults get upgraded.
     var settingsVersion: Int = 2
 
@@ -49,6 +64,13 @@ struct Settings: Codable {
         useModelFallback = try c.decodeIfPresent(Bool.self, forKey: .useModelFallback) ?? d.useModelFallback
         brain = try c.decodeIfPresent(String.self, forKey: .brain) ?? d.brain
         brainIdleSeconds = try c.decodeIfPresent(Double.self, forKey: .brainIdleSeconds) ?? d.brainIdleSeconds
+        brainModel = try c.decodeIfPresent(String.self, forKey: .brainModel) ?? d.brainModel
+        agentBrain = try c.decodeIfPresent(String.self, forKey: .agentBrain) ?? d.agentBrain
+        endpointURL = try c.decodeIfPresent(String.self, forKey: .endpointURL) ?? d.endpointURL
+        endpointModel = try c.decodeIfPresent(String.self, forKey: .endpointModel) ?? d.endpointModel
+        permissionLevel = try c.decodeIfPresent(String.self, forKey: .permissionLevel) ?? d.permissionLevel
+        agentMaxSteps = try c.decodeIfPresent(Int.self, forKey: .agentMaxSteps) ?? d.agentMaxSteps
+        conversationMinutes = try c.decodeIfPresent(Double.self, forKey: .conversationMinutes) ?? d.conversationMinutes
         settingsVersion = try c.decodeIfPresent(Int.self, forKey: .settingsVersion) ?? 1
         if settingsVersion < 2 {
             // v2 (speech eval on 50 recordings, 2026-09-22): the transcriber beat dictation, the custom
@@ -81,6 +103,7 @@ struct Settings: Codable {
             }
             s = decoded
         }
+        if !s.brainModel.isEmpty { QwenPlanner.modelID = s.brainModel }
         let enc = JSONEncoder()
         enc.outputFormatting = [.prettyPrinted, .sortedKeys]
         try? enc.encode(s).write(to: settingsURL)

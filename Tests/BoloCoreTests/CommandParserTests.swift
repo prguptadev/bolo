@@ -388,6 +388,15 @@ private func one(_ s: String) -> Step? {
         #expect(SystemOp.emptyTrash.irreversible)
     }
 
+    @Test func permissionLevels() {
+        #expect(Step(.system, target: "emptyTrash").risk == .destructive)
+        #expect(Step(.sendMessage, contact: "bhai", text: "hi").risk == .send)
+        #expect(Step(.click, target: "Save").risk == .navigate)
+        #expect(PermissionLevel.safe.allows(.write))
+        #expect(!PermissionLevel.safe.allows(.send))
+        #expect(PermissionLevel.standard.allows(.destructive))
+    }
+
     @Test func arithmetic() {
         #expect(Arithmetic.evaluate("5+5") == 10)
         #expect(Arithmetic.evaluate("12 times 7") == 84)

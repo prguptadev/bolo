@@ -99,7 +99,7 @@ struct NotchView: View {
                 .font(.system(size: 13))
                 .foregroundStyle(.gray)
                 .lineLimit(2)
-            ForEach(agent.rows) { row in
+            ForEach(agent.rows.suffix(6)) { row in
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     icon(row.status).frame(width: 14)
                     Text(row.text).font(.system(size: row.isAnswer ? 15 : 14)).lineLimit(row.isAnswer ? 10 : 2)
@@ -107,7 +107,9 @@ struct NotchView: View {
                 }
             }
             if let message = agent.message {
-                Text(message).font(.system(size: 13)).foregroundStyle(agent.phase == .failed ? failRed : .gray).lineLimit(3)
+                Text(message).font(.system(size: 13))
+                    .foregroundStyle(agent.phase == .failed ? failRed : message.contains("say \"yes\"") ? micOrange : .gray)
+                    .lineLimit(3)
             }
         }
     }

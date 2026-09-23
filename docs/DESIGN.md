@@ -18,7 +18,17 @@ right ⌥ released ──┤ +350 ms tail
             then each alternative                                   (~2 ms, can't invent)
                    │ no match
                    ▼
-            Qwen3.5-4B via MLX, JSON-schema-constrained  (fallback: Apple's model, no sends)
+            Qwen (MLX, in-app) one-shot plan for plain requests  (fallback: Apple's model, no sends)
+                   │ screen work, a follow-up, or a failed step
+                   ▼
+            Agent loop (AgentLoop): Observer snapshot ─► model picks ONE action (JSON) ─► risk →
+            permission level (allow / say "yes" / countdown / deny) ─► Tools ─► look again … ≤ 14 steps
+              Observer: web pages via the browser's own JS (numbered links/buttons/fields, like
+              browser-use); every other app via Accessibility (numbered controls + some text);
+              stops on a macOS permission prompt. Context: Conversation (last 8 turns, 10 min),
+              memory.md, skills/<App>.md.
+              Tools: open_app/url/file, click, fill, type, key, menu, scroll, shell (zsh, cwd carried),
+              list/read/write_file, message/call (grounded), note, reminder, system ops, remember, lookup.
                    │
                    ▼
             Grounding (drop anything not in the utterance) → low confidence? sends become drafts
@@ -27,6 +37,10 @@ right ⌥ released ──┤ +350 ms tail
                          Executor → skills: deep links, AppleScript, EventKit, keystrokes, AX
                                   │ each step's result → notch → history.jsonl
 ```
+
+Ideas borrowed: numbered screen elements (browser-use, Peekaboo), direct actions over UI clicking
+(Microsoft UFO), per-tool allow/ask/deny by risk (opencode, OpenWork). Everything is local: the
+brain is an MLX model inside the app (`brainModel`), or an Ollama/LM Studio endpoint on this Mac.
 
 ## Decisions
 
