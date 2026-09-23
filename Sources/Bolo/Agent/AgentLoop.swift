@@ -177,10 +177,12 @@ final class AgentLoop {
                 continue
             case .confirm:
                 onRow("\(action.summary) · say \"yes\" to allow", .pending, false)
+                Log.agent.notice("waiting for a spoken yes: \(action.summary, privacy: .public)")
                 let ok = await confirm(action.summary)
+                Log.agent.notice("spoken confirmation: \(ok ? "yes" : "no or silence", privacy: .public)")
                 guard ok else {
                     onRow("\(action.summary) · not done", .failed, true)
-                    outcome.message = "OK, not doing that."
+                    outcome.message = "Not done: it needed a \"yes\"."
                     break
                 }
             case .countdown:

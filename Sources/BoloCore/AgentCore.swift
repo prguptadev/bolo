@@ -421,9 +421,16 @@ public enum ShellSafety {
 
     public static func risk(_ command: String) -> Risk {
         var worst = Risk.read
-        // Overwriting a file with ">" (">>" appends, "2>" and ">/dev/null" are harmless).
+        // ">" into a file that exists overwrites it; into a new file it just writes. (">>" appends,
+        // "2>" and ">/dev/null" are harmless.)
         let noHarmless = command.replacingOccurrences(of: "\\d?>\\s*/dev/null|2>&1|>>", with: " ", options: .regularExpression)
-        if noHarmless.range(of: "(^|[^0-9&])>", options: .regularExpression) != nil { worst = .destructive }
+        if let re = try? NSRegularExpression(pattern: "(?:^|[^0-9&])>\\s*([^\\s;|&<>]+)") {
+            for m in re.matches(in: noHarmless, range: NSRange(noHarmless.startIndex..., in: noHarmless)) {
+                guard let r = Range(m.range(at: 1), in: noHarmless) else { continue }
+                let target = (String(noHarmless[r]).trimmingCharacters(in: CharacterSet(charactersIn: "\"'")) as NSString).expandingTildeInPath
+                worst = max(worst, FileManager.default.fileExists(atPath: target) ? .destructive : .write)
+            }
+        }
         let segments = command.components(separatedBy: CharacterSet(charactersIn: ";|&\n")).map { $0.trimmingCharacters(in: .whitespaces) }
         for segment in segments where !segment.isEmpty {
             var words = segment.split(separator: " ").map(String.init)
@@ -575,7 +582,8 @@ public enum AgentPrompt {
         {"thought":"…","tool":"menu","label":"File > New > Java Class"}
         {"thought":"…","tool":"scroll","direction":"down"}
         {"thought":"…","tool":"wait","seconds":2}
-        {"thought":"…","tool":"shell","command":"ls -la"}   (runs it for you in zsh and returns the output; never open the Terminal app)
+        {"thought":"…","tool":"shell","command":"ls -la"}   (runs it for you in zsh and returns the output; never open the Terminal app; \
+        never write files with it, that's write_file)
         {"thought":"…","tool":"list_files","path":"~/Developer"}
         {"thought":"…","tool":"read_file","path":"~/notes/todo.txt"}
         {"thought":"…","tool":"write_file","path":"~/project/src/Hello.java","text":"<the whole file>"}   (new files only)
